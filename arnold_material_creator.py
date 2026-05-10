@@ -1,24 +1,28 @@
 """
-Arnold Material Creator para Cinema 4D
-======================================
+Arnold Material Creator para Cinema 4D R26 / C4DtoA 4.x
+=========================================================
 
-Script para Cinema 4D (con C4DtoA / Arnold Render instalado).
+Compatible: Cinema 4D R26 (26.x) con C4DtoA 4.2+
 
-Funcionamiento:
-    1. Pregunta una carpeta con mapas de texturas.
-    2. Agrupa los archivos por nombre de material detectando los sufijos
-       (BaseColor, Roughness, Normal, Displacement, AO, Specular, Metalness,
-       Opacity, Emission, etc).
-    3. Por cada grupo crea un material Arnold (standard_surface) y conecta
-       cada mapa pasando previamente por un nodo `triplanar`, de modo que
-       todas las texturas se proyectan triplanar.
+Instrucciones:
+    1. Cinema 4D > Extensions > Script Manager > Nuevo script
+    2. Pega o carga este archivo y pulsa "Ejecutar"
+    3. Selecciona la carpeta con los mapas de textura
+    4. El script agrupa los archivos por nombre de material, detecta
+       el tipo de mapa por sufijo y crea materiales Arnold standard_surface
+       donde cada imagen pasa por un nodo Triplanar.
 
-Cómo usarlo:
-    - Cinema 4D > Script Manager > New Script > pega este archivo > Execute.
-    - O guárdalo en la carpeta de scripts de C4D y ejecútalo desde el menú
-      Extensions > User Scripts.
-
-Probado con C4DtoA 4.x sobre Cinema 4D R23 - 2024 (API GraphView clásica).
+Mapas reconocidos (por sufijo en el nombre de archivo):
+    Base Color   : basecolor, base_color, albedo, diffuse, diff, color, _col, _bc
+    Roughness    : roughness, rough, _rgh
+    Metalness    : metalness, metallic, metal, _mtl
+    Specular     : specular, spec
+    Normal       : normal, normaldx, normalgl, _nrm, _norm
+    Displacement : displacement, disp, height, _hgt
+    AO           : ambientocclusion, ambient_occlusion, _ao, occlusion
+    Opacity      : opacity, alpha, transparency
+    Emission     : emission, emissive, emit
+    Bump         : bump
 """
 
 import os
@@ -26,22 +30,21 @@ import re
 import c4d
 from c4d import gui
 
+# ──────────────────────────────────────────────────────────────────────────────
+# IDs del plugin Arnold (C4DtoA) – no cambian entre versiones menores
+# ──────────────────────────────────────────────────────────────────────────────
+ARNOLD_SHADER_NETWORK = 1033991   # Tipo de material Arnold (Shader Network)
+ARNOLD_SHADER         = 1033990   # Nodo Arnold genérico dentro del grafo
 
-# ---------------------------------------------------------------------------
-# IDs de Arnold (C4DtoA)
-# ---------------------------------------------------------------------------
-ARNOLD_SHADER_NETWORK = 1033991      # Material Arnold (Shader Network)
-ARNOLD_SHADER         = 1033990      # Nodo genérico Arnold (su tipo se setea por nombre)
-ARNOLD_NODE_PARAM_SHADER_NAME = c4d.C4DAI_SHADER_NAME if hasattr(c4d, "C4DAI_SHADER_NAME") else 1000
-
-
-# Extensiones de imagen aceptadas
+# ──────────────────────────────────────────────────────────────────────────────
+# Extensiones de imagen válidas
+# ──────────────────────────────────────────────────────────────────────────────
 VALID_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff",
               ".exr", ".hdr", ".tx", ".bmp", ".tga", ".psd")
 
-
-# Diccionario de palabras clave para detectar el tipo de mapa.
-# El primer match gana. Se compara sobre el nombre de archivo en minúsculas.
+# ──────────────────────────────────────────────────────────────────────────────
+# Palabras clave para detectar tipos de mapa
+# ──────────────────────────────────────────────────────────────────────────────
 TEXTURE_KEYWORDS = {
     "base_color":   ["basecolor", "base_color", "albedo", "diffuse", "diff", "color", "_col", "_bc"],
     "roughness":    ["roughness", "rough", "_rgh"],
@@ -55,38 +58,41 @@ TEXTURE_KEYWORDS = {
     "bump":         ["bump"],
 }
 
+# Orden de prioridad para mostrar en el grafo (de arriba a abajo)
+MAP_ORDER = ["base_color", "ao", "specular", "roughness", "metalness",
+             "normal", "bump", "emission", "opacity", "displacement"]
 
-# ---------------------------------------------------------------------------
-# Detección de mapas
-# ---------------------------------------------------------------------------
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Utilidades: detección de archivos
+# ──────────────────────────────────────────────────────────────────────────────
+
 def detect_map_type(filename):
-    """Devuelve el tipo de mapa o None si no se reconoce."""
+    """Devuelve el tipo de mapa según el nombre de archivo, o None."""
     base = os.path.splitext(filename)[0].lower()
     for map_type, keywords in TEXTURE_KEYWORDS.items():
         for kw in keywords:
-            pattern = r"(?:^|[_\-\.\s])" + re.escape(kw) + r"(?:[_\-\.\s\d]|$)"
-            if re.search(pattern, base):
+            if re.search(r"(?:^|[_\-\.\s])" + re.escape(kw) + r"(?:[_\-\.\s\d]|$)", base):
                 return map_type
     return None
 
 
 def derive_material_name(filename):
-    """Quita el sufijo del mapa para obtener el nombre del material."""
+    """Elimina el sufijo de tipo de mapa para obtener el nombre base del material."""
     base = os.path.splitext(filename)[0]
     for keywords in TEXTURE_KEYWORDS.values():
         for kw in keywords:
             base = re.sub(r"[_\-\.\s]" + re.escape(kw) + r".*$", "", base, flags=re.IGNORECASE)
-    # Quita resoluciones tipo "_4K", "_2K"
+    # Elimina resoluciones tipo _4K, _2K, etc.
     base = re.sub(r"[_\-\.\s]?\d{1,2}[kK]\b.*$", "", base)
     return base.strip(" _-.") or "Material"
 
 
-def group_textures(folder, recursive=True):
-    """Recorre la carpeta y devuelve {nombre_material: {tipo: ruta}}."""
+def group_textures(folder):
+    """Recorre la carpeta recursivamente y agrupa texturas por material."""
     materials = {}
-    walker = os.walk(folder) if recursive else [(folder, [], os.listdir(folder))]
-    for root, _, files in walker:
-        for fname in files:
+    for root_dir, _, files in os.walk(folder):
+        for fname in sorted(files):
             if not fname.lower().endswith(VALID_EXTS):
                 continue
             mtype = detect_map_type(fname)
@@ -94,106 +100,132 @@ def group_textures(folder, recursive=True):
                 continue
             mname = derive_material_name(fname)
             materials.setdefault(mname, {})
-            # Si ya hay un mapa de ese tipo no lo sobreescribimos
-            materials[mname].setdefault(mtype, os.path.join(root, fname))
+            materials[mname].setdefault(mtype, os.path.join(root_dir, fname))
     return materials
 
 
-# ---------------------------------------------------------------------------
-# Helpers de la red de nodos Arnold
-# ---------------------------------------------------------------------------
-def _set_shader_type(node, shader_name):
-    """Asigna el tipo de shader Arnold por nombre (e.g. 'image', 'triplanar')."""
+# ──────────────────────────────────────────────────────────────────────────────
+# Utilidades: acceso a parámetros por descripción (robusto en R26)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _set_param_by_ident(node, ident_str, value):
+    """
+    Establece un parámetro buscándolo por su identificador de descripción.
+    Este método funciona con cualquier versión de C4DtoA en R26 sin depender
+    de constantes numéricas que pueden variar.
+    """
     try:
-        node[ARNOLD_NODE_PARAM_SHADER_NAME] = shader_name
+        desc = node.GetDescription(c4d.DESCFLAGS_DESC_NONE)
+        for pid, bc, _ in desc:
+            if bc.GetString(c4d.DESC_IDENT) == ident_str:
+                node.SetParameter(pid, value, c4d.DESCFLAGS_SET_FORCESET)
+                return True
     except Exception:
-        # En algunas builds el ID literal es 1000
-        node[1000] = shader_name
-
-
-def create_node(master, shader_name, x=0, y=0):
-    """Crea un nodo Arnold dentro del master del material."""
-    parent = master.GetRoot()
-    node = master.CreateNode(parent, ARNOLD_SHADER, None, x, y)
-    if node is None:
-        return None
-    _set_shader_type(node, shader_name)
-    return node
-
-
-def add_out_port(node, port_name):
-    port = node.AddPort(c4d.GV_PORT_OUTPUT, c4d.DescID(c4d.DescLevel(0, 0, 0)), message=False)
-    # Mejor: usar AddPortIsVisible por nombre cuando es posible
-    return port
-
-
-def connect_by_name(master, src_node, src_port, dst_node, dst_port):
-    """Conecta puertos por nombre (Arnold expone puertos virtuales)."""
-    out_port = None
-    in_port = None
-
-    # Reusa puertos existentes
-    for p in src_node.GetOutPorts():
-        if p.GetName(src_node) == src_port or p.GetMainID() == src_port:
-            out_port = p
-            break
-    if out_port is None:
-        try:
-            out_port = src_node.AddPort(c4d.GV_PORT_OUTPUT, src_port, message=True)
-        except Exception:
-            out_port = src_node.AddPort(c4d.GV_PORT_OUTPUT, src_port)
-
-    for p in dst_node.GetInPorts():
-        if p.GetName(dst_node) == dst_port or p.GetMainID() == dst_port:
-            in_port = p
-            break
-    if in_port is None:
-        try:
-            in_port = dst_node.AddPort(c4d.GV_PORT_INPUT, dst_port, message=True)
-        except Exception:
-            in_port = dst_node.AddPort(c4d.GV_PORT_INPUT, dst_port)
-
-    if out_port and in_port:
-        return out_port.Connect(in_port)
+        pass
     return False
 
 
-def create_image_with_triplanar(master, file_path, raw=False, x=0, y=0):
-    """Crea image -> triplanar y devuelve (image_node, triplanar_node)."""
+def _set_param_safe(node, c4d_const_name, fallback_ident, value):
+    """
+    Intenta: 1) constante C4D nombrada, 2) búsqueda por ident, 3) silencio.
+    """
+    const = getattr(c4d, c4d_const_name, None)
+    if const is not None:
+        try:
+            node[const] = value
+            return True
+        except Exception:
+            pass
+    return _set_param_by_ident(node, fallback_ident, value)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Utilidades: creación de nodos y conexión de puertos
+# ──────────────────────────────────────────────────────────────────────────────
+
+def create_node(master, shader_type, x=0, y=0):
+    """Crea un nodo Arnold GvNode del tipo dado dentro del master."""
+    root = master.GetRoot()
+    node = master.CreateNode(root, ARNOLD_SHADER, None, x, y)
+    if node is None:
+        return None
+    # Asignar tipo de shader Arnold
+    if not _set_param_safe(node, "C4DAI_SHADER_NAME", "shader_name", shader_type):
+        # Último recurso: ID numérico conocido del parámetro de nombre en C4DtoA 4.x
+        try:
+            node[1000] = shader_type
+        except Exception:
+            pass
+    return node
+
+
+def _find_port(node, direction, name):
+    """Busca un puerto por nombre; lo crea si no existe."""
+    ports = node.GetOutPorts() if direction == c4d.GV_PORT_OUTPUT else node.GetInPorts()
+    for p in ports:
+        try:
+            if p.GetName(node) == name:
+                return p
+        except Exception:
+            continue
+    # Añadir el puerto si no se encontró
+    try:
+        return node.AddPort(direction, name, message=False)
+    except Exception:
+        try:
+            return node.AddPort(direction, name)
+        except Exception:
+            return None
+
+
+def connect(src_node, src_port, dst_node, dst_port):
+    """Conecta dos nodos Arnold por nombre de puerto."""
+    out = _find_port(src_node, c4d.GV_PORT_OUTPUT, src_port)
+    inp = _find_port(dst_node, c4d.GV_PORT_INPUT,  dst_port)
+    if out and inp:
+        try:
+            return out.Connect(inp)
+        except Exception:
+            pass
+    return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Bloque imagen + triplanar
+# ──────────────────────────────────────────────────────────────────────────────
+
+def create_image_triplanar(master, filepath, raw, x, y):
+    """
+    Crea:  [image] --> [triplanar]
+    Devuelve (image_node, triplanar_node).
+    raw=True  → color space Raw / Non-Color (roughness, normal, metalness, etc.)
+    raw=False → color space Auto/sRGB       (base color, emission)
+    """
     img = create_node(master, "image", x, y)
     if img is None:
         return None, None
 
-    # Ruta del archivo
-    try:
-        img[c4d.C4DAIP_IMAGE_FILENAME] = file_path
-    except Exception:
-        # Fallback genérico
-        for pid in (c4d.C4DAIP_IMAGE_FILENAME if hasattr(c4d, "C4DAIP_IMAGE_FILENAME") else 1, 1):
-            try:
-                img[pid] = file_path
-                break
-            except Exception:
-                continue
+    # Ruta del archivo — probamos varias constantes / idents
+    _set_param_safe(img, "C4DAIP_IMAGE_FILENAME", "filename", filepath)
 
-    # Color space: raw para mapas no-color (roughness, normal, metal, disp, etc.)
+    # Color space: 0 = auto/sRGB, 1 = raw
     if raw:
-        try:
-            img[c4d.C4DAIP_IMAGE_COLOR_SPACE] = 1   # 'Raw' / Non-Color
-        except Exception:
-            pass
+        _set_param_safe(img, "C4DAIP_IMAGE_COLOR_SPACE", "color_space", 1)
 
-    tri = create_node(master, "triplanar", x + 280, y)
-    if tri is not None:
-        connect_by_name(master, img, "output", tri, "input")
+    tri = create_node(master, "triplanar", x + 300, y)
+    if tri is None:
+        return img, None
+
+    connect(img, "output", tri, "input")
     return img, tri
 
 
-# ---------------------------------------------------------------------------
-# Construcción del material
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Construcción del material completo
+# ──────────────────────────────────────────────────────────────────────────────
+
 def build_material(name, maps):
-    """Crea un material Arnold con los mapas indicados."""
+    """Crea y devuelve un BaseMaterial Arnold con todos los mapas conectados."""
     mat = c4d.BaseMaterial(ARNOLD_SHADER_NETWORK)
     if mat is None:
         return None
@@ -203,134 +235,168 @@ def build_material(name, maps):
     if master is None:
         return None
 
-    # Standard Surface
-    std = create_node(master, "standard_surface", 900, 0)
+    root   = master.GetRoot()
+    STEP   = 250        # separación vertical entre mapas en el grafo
+    x_img  = 0         # columna de nodos imagen
+    x_tri  = 310       # columna de nodos triplanar
+    x_aux  = 660       # columna de nodos auxiliares (normal_map, range, multiply…)
+    x_std  = 1000      # columna standard_surface
+    y      = 0
+
+    # ── Standard Surface ─────────────────────────────────────────────────────
+    std = create_node(master, "standard_surface", x_std, 0)
     if std is None:
         return mat
 
-    y = -600
-    step = 220
-
-    # ---- Base Color
+    # ── Base Color ───────────────────────────────────────────────────────────
     if "base_color" in maps:
-        _, tri = create_image_with_triplanar(master, maps["base_color"], raw=False, x=0, y=y)
+        _, tri = create_image_triplanar(master, maps["base_color"], raw=False,
+                                        x=x_img, y=y)
         if tri:
-            # Si hay AO, lo multiplicamos por encima del base color
             if "ao" in maps:
-                _, ao_tri = create_image_with_triplanar(master, maps["ao"], raw=True,
-                                                        x=0, y=y + step)
-                mult = create_node(master, "multiply", 600, y)
+                # AO × BaseColor con nodo multiply
+                _, ao_tri = create_image_triplanar(master, maps["ao"], raw=True,
+                                                   x=x_img, y=y + STEP)
+                mult = create_node(master, "multiply", x_aux, y + STEP // 2)
                 if mult and ao_tri:
-                    connect_by_name(master, tri, "output", mult, "input1")
-                    connect_by_name(master, ao_tri, "output", mult, "input2")
-                    connect_by_name(master, mult, "output", std, "base_color")
+                    connect(tri,    "output", mult, "input1")
+                    connect(ao_tri, "output", mult, "input2")
+                    connect(mult,   "output", std,  "base_color")
+                    y += STEP
                 else:
-                    connect_by_name(master, tri, "output", std, "base_color")
+                    connect(tri, "output", std, "base_color")
             else:
-                connect_by_name(master, tri, "output", std, "base_color")
-        y += step
+                connect(tri, "output", std, "base_color")
+        y += STEP
 
-    # ---- Specular weight
+    # ── Specular ─────────────────────────────────────────────────────────────
     if "specular" in maps:
-        _, tri = create_image_with_triplanar(master, maps["specular"], raw=True, x=0, y=y)
+        _, tri = create_image_triplanar(master, maps["specular"], raw=True,
+                                        x=x_img, y=y)
         if tri:
-            connect_by_name(master, tri, "r", std, "specular")
-        y += step
+            connect(tri, "output", std, "specular")
+        y += STEP
 
-    # ---- Roughness
+    # ── Roughness ────────────────────────────────────────────────────────────
     if "roughness" in maps:
-        _, tri = create_image_with_triplanar(master, maps["roughness"], raw=True, x=0, y=y)
+        _, tri = create_image_triplanar(master, maps["roughness"], raw=True,
+                                        x=x_img, y=y)
         if tri:
-            connect_by_name(master, tri, "r", std, "specular_roughness")
-        y += step
+            connect(tri, "output", std, "specular_roughness")
+        y += STEP
 
-    # ---- Metalness
+    # ── Metalness ────────────────────────────────────────────────────────────
     if "metalness" in maps:
-        _, tri = create_image_with_triplanar(master, maps["metalness"], raw=True, x=0, y=y)
+        _, tri = create_image_triplanar(master, maps["metalness"], raw=True,
+                                        x=x_img, y=y)
         if tri:
-            connect_by_name(master, tri, "r", std, "metalness")
-        y += step
+            connect(tri, "output", std, "metalness")
+        y += STEP
 
-    # ---- Normal -> normal_map -> standard_surface.normal
+    # ── Normal ───────────────────────────────────────────────────────────────
     if "normal" in maps:
-        _, tri = create_image_with_triplanar(master, maps["normal"], raw=True, x=0, y=y)
+        _, tri = create_image_triplanar(master, maps["normal"], raw=True,
+                                        x=x_img, y=y)
         if tri:
-            nmap = create_node(master, "normal_map", 600, y)
-            if nmap is not None:
-                try:
-                    nmap[c4d.C4DAIP_NORMAL_MAP_COLOR_TO_SIGNED] = True
-                except Exception:
-                    pass
-                connect_by_name(master, tri, "output", nmap, "input")
-                connect_by_name(master, nmap, "output", std, "normal")
-        y += step
-
-    # ---- Bump (si existe pero no hay normal lo conectamos como bump2d)
-    if "bump" in maps and "normal" not in maps:
-        _, tri = create_image_with_triplanar(master, maps["bump"], raw=True, x=0, y=y)
-        if tri:
-            bmp = create_node(master, "bump2d", 600, y)
-            if bmp is not None:
-                connect_by_name(master, tri, "r", bmp, "bump_map")
-                connect_by_name(master, bmp, "output", std, "normal")
-        y += step
-
-    # ---- Emission
-    if "emission" in maps:
-        _, tri = create_image_with_triplanar(master, maps["emission"], raw=False, x=0, y=y)
-        if tri:
-            try:
-                std[c4d.C4DAIP_STANDARD_SURFACE_EMISSION] = 1.0
-            except Exception:
-                pass
-            connect_by_name(master, tri, "output", std, "emission_color")
-        y += step
-
-    # ---- Opacity
-    if "opacity" in maps:
-        _, tri = create_image_with_triplanar(master, maps["opacity"], raw=True, x=0, y=y)
-        if tri:
-            connect_by_name(master, tri, "output", std, "opacity")
-        y += step
-
-    # ---- Displacement: se conecta al puerto displacement del propio material output.
-    # En el grafo Arnold el "Material" raíz tiene los puertos shader/displacement.
-    if "displacement" in maps:
-        _, tri = create_image_with_triplanar(master, maps["displacement"], raw=True, x=0, y=y)
-        if tri:
-            # Centrado en torno a 0 (-0.5..0.5)
-            rng = create_node(master, "range", 600, y)
-            if rng is not None:
-                try:
-                    rng[c4d.C4DAIP_RANGE_OUTPUT_MIN] = c4d.Vector(-0.5)
-                    rng[c4d.C4DAIP_RANGE_OUTPUT_MAX] = c4d.Vector(0.5)
-                except Exception:
-                    pass
-                connect_by_name(master, tri, "output", rng, "input")
-                # Conecta al output del material (puerto displacement)
-                root = master.GetRoot()
-                # El nodo raíz del grafo expone "displacement"
-                connect_by_name(master, rng, "output", root, "displacement")
+            nmap = create_node(master, "normal_map", x_aux, y)
+            if nmap:
+                connect(tri,  "output", nmap, "input")
+                connect(nmap, "output", std,  "normal")
             else:
-                root = master.GetRoot()
-                connect_by_name(master, tri, "output", root, "displacement")
-        y += step
+                connect(tri, "output", std, "normal")
+        y += STEP
 
-    # ---- Conexión final standard_surface -> root.shader
-    root = master.GetRoot()
-    connect_by_name(master, std, "output", root, "shader")
+    # ── Bump (solo si no hay mapa Normal) ────────────────────────────────────
+    elif "bump" in maps:
+        _, tri = create_image_triplanar(master, maps["bump"], raw=True,
+                                        x=x_img, y=y)
+        if tri:
+            bmp = create_node(master, "bump2d", x_aux, y)
+            if bmp:
+                connect(tri, "r",      bmp, "bump_map")
+                connect(bmp, "output", std, "normal")
+            else:
+                connect(tri, "r", std, "normal")
+        y += STEP
+
+    # ── Emission ─────────────────────────────────────────────────────────────
+    if "emission" in maps:
+        _, tri = create_image_triplanar(master, maps["emission"], raw=False,
+                                        x=x_img, y=y)
+        if tri:
+            # Activar peso de emission a 1
+            _set_param_safe(std, "C4DAIP_STANDARD_SURFACE_EMISSION",
+                            "emission", 1.0)
+            connect(tri, "output", std, "emission_color")
+        y += STEP
+
+    # ── Opacity ──────────────────────────────────────────────────────────────
+    if "opacity" in maps:
+        _, tri = create_image_triplanar(master, maps["opacity"], raw=True,
+                                        x=x_img, y=y)
+        if tri:
+            connect(tri, "output", std, "opacity")
+        y += STEP
+
+    # ── Displacement ─────────────────────────────────────────────────────────
+    if "displacement" in maps:
+        _, tri = create_image_triplanar(master, maps["displacement"], raw=True,
+                                        x=x_img, y=y)
+        if tri:
+            rng = create_node(master, "range", x_aux, y)
+            if rng:
+                # Recentrar 0-1 a -0.5..0.5 para desplazamiento centrado
+                _set_param_by_ident(rng, "output_min",
+                                    c4d.Vector(-0.5, -0.5, -0.5))
+                _set_param_by_ident(rng, "output_max",
+                                    c4d.Vector(0.5,  0.5,  0.5))
+                connect(tri, "output", rng,  "input")
+                connect(rng, "output", root, "displacement")
+            else:
+                connect(tri, "output", root, "displacement")
+        y += STEP
+
+    # ── Salida final: standard_surface → shader output del material ───────────
+    connect(std, "output", root, "shader")
 
     mat.Update(True, True)
     return mat
 
 
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Diálogo de vista previa
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_preview_text(materials):
+    """Devuelve texto con el resumen de materiales y mapas detectados."""
+    lines = ["Se van a crear {0} material(es):\n".format(len(materials))]
+    for mname in sorted(materials):
+        maps = materials[mname]
+        lines.append("  [{0}]".format(mname))
+        for mtype in MAP_ORDER:
+            if mtype in maps:
+                lines.append("    + {0:<14} {1}".format(
+                    mtype, os.path.basename(maps[mtype])))
+        lines.append("")
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Punto de entrada
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+
 def main():
     doc = c4d.documents.GetActiveDocument()
     if doc is None:
-        gui.MessageDialog("No hay documento activo.")
+        gui.MessageDialog("No hay documento activo en Cinema 4D.")
+        return
+
+    # Verificar que el plugin Arnold está cargado
+    if c4d.plugins.FindPlugin(ARNOLD_SHADER_NETWORK) is None:
+        gui.MessageDialog(
+            "C4DtoA (Arnold) no encontrado.\n"
+            "Asegúrate de que Arnold está instalado y activado."
+        )
         return
 
     folder = c4d.storage.LoadDialog(
@@ -340,25 +406,41 @@ def main():
     if not folder:
         return
 
-    materials = group_textures(folder, recursive=True)
+    materials = group_textures(folder)
     if not materials:
-        gui.MessageDialog("No se encontraron texturas reconocibles en la carpeta.")
+        gui.MessageDialog(
+            "No se encontraron texturas con sufijos reconocibles en:\n" + folder
+        )
+        return
+
+    # Confirmación con vista previa
+    if not gui.QuestionDialog(build_preview_text(materials) + "\n¿Crear materiales?"):
         return
 
     doc.StartUndo()
     created = 0
-    for name, maps in sorted(materials.items()):
-        mat = build_material(name, maps)
-        if mat is not None:
-            doc.InsertMaterial(mat)
-            doc.AddUndo(c4d.UNDOTYPE_NEW, mat)
-            created += 1
-    doc.EndUndo()
+    errors  = []
 
+    for name in sorted(materials):
+        maps = materials[name]
+        try:
+            mat = build_material(name, maps)
+            if mat is not None:
+                doc.InsertMaterial(mat)
+                doc.AddUndo(c4d.UNDOTYPE_NEW, mat)
+                created += 1
+            else:
+                errors.append("{0}: No se pudo crear (GetNodeMaster devolvió None)".format(name))
+        except Exception as exc:
+            errors.append("{0}: {1}".format(name, exc))
+
+    doc.EndUndo()
     c4d.EventAdd()
-    gui.MessageDialog(
-        "Se crearon {0} material(es) Arnold con proyeccion Triplanar.".format(created)
-    )
+
+    msg = "Materiales Arnold creados con Triplanar: {0}".format(created)
+    if errors:
+        msg += "\n\nAvisos / Errores:\n" + "\n".join(errors)
+    gui.MessageDialog(msg)
 
 
 if __name__ == "__main__":
