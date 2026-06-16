@@ -22,18 +22,37 @@ En la parte superior de la ventana eliges:
   Por defecto `Documentos\BuscadorInventor`. Puedes ponerlo en una carpeta de
   red para **compartir el índice con todo el equipo**.
 
+### Opciones de indexado
+
+- **Indexar también Nº de pieza (más lento)**: además del nombre del archivo,
+  lee la iProperty **"Número de pieza" (Part Number)** de cada `.ipt`/`.iam`
+  usando el **Apprentice Server** de Inventor. Así puedes buscar por el código
+  aunque esté en el Nº de pieza y no en el nombre. Este modo va en el hilo
+  principal (con progreso y **Cancelar**) porque la API de Inventor no admite
+  hilos; la primera vez tarda más. Sin marcar, el indexado es **rápido** (solo
+  nombre) y corre en segundo plano.
+- **Actualizar índice al abrir**: al lanzar la herramienta, si ya existe un
+  índice, lo **reindexa automáticamente** (respeta el modo elegido).
+
+**Reindexado incremental:** al reindexar, los ficheros que **no han cambiado**
+(misma fecha) **conservan su Nº de pieza** sin volver a leerlo. Por eso la
+primera indexación completa tarda, pero las siguientes son rápidas (solo se
+leen los ficheros nuevos o modificados).
+
 ### Flujo de uso
 
-1. **Indexar ahora** (una vez, o cuando haya cambios): recorre la carpeta en
-   **segundo plano** (no congela Inventor; se puede **Cancelar**) y guarda el
-   índice. Te dice cuántos ficheros ha indexado.
+1. **Indexar ahora** (una vez, o cuando haya cambios): recorre la carpeta y
+   guarda el índice. Te dice cuántos ficheros ha indexado.
 2. **Buscar**: escribe el código, elige *Todos / Piezas / Ensamblajes* y pulsa
-   **Buscar**. Lee el índice en memoria → resultados al instante.
+   **Buscar**. La búsqueda compara el código con el **nombre** del archivo y con
+   el **Nº de pieza** indexado. Resultados al instante.
 3. Selecciona un resultado y **Abrir en Inventor** (o doble clic).
 
 > El índice es una "foto" del momento en que se creó. Si añades o mueves
-> ficheros, vuelve a pulsar **Indexar ahora** para actualizarlo. Si abres un
-> fichero que ya no existe, la regla te avisa de que reindexes.
+> ficheros, pulsa **Indexar ahora** (o activa *Actualizar al abrir*). Si abres
+> un fichero que ya no existe, la regla te avisa de que reindexes.
+
+Las opciones (rutas y casillas) se recuerdan entre sesiones.
 
 Las rutas elegidas se **recuerdan** entre sesiones en
 `Documentos\BuscadorInventor\ajustes.txt`. Para cambiar los valores por defecto

@@ -5,16 +5,23 @@
 '  Funcionamiento:
 '    1) INDEXAR: recorre una vez la carpeta de red y guarda un fichero
 '       indice (IndiceBuscador.txt) en la carpeta que tu indiques.
-'    2) BUSCAR: las busquedas leen ese indice -> son casi instantaneas,
-'       sin volver a recorrer la red.
+'    2) BUSCAR: las busquedas leen ese indice -> casi instantaneas.
 '
-'  - La indexacion se ejecuta en SEGUNDO PLANO (no congela Inventor) y se
-'    puede Cancelar.
-'  - Se indexan piezas (.ipt) y ensamblajes (.iam).
+'  Modos de indexado:
+'    - Rapido (solo nombre): en SEGUNDO PLANO, no congela Inventor.
+'    - Completo (nombre + Nº de pieza): lee la iProperty "Part Number" con
+'      el Apprentice Server. Va en el hilo principal (con progreso y
+'      Cancelar) porque la API de Inventor no admite hilos.
 '
-'  NOTA: iLogic auto-importa el namespace "Inventor" (que choca con
-'  Application, View, TextBox, Environment...). Por eso TODO va cualificado
-'  con su ruta completa (System.Windows.Forms..., System...).
+'  Reindexado INCREMENTAL: reutiliza el Nº de pieza de los ficheros que no
+'  han cambiado (no los vuelve a leer).  Opcion "Actualizar al abrir".
+'
+'  Se indexan piezas (.ipt) y ensamblajes (.iam). La busqueda compara el
+'  codigo con el NOMBRE del fichero y con el Nº DE PIEZA.
+'
+'  NOTA: iLogic auto-importa el namespace "Inventor" (choca con Application,
+'  View, TextBox, Environment...). Por eso TODO va cualificado con su ruta
+'  completa (System.Windows.Forms..., System...).
 ' =====================================================================
 
 Sub Main()
@@ -39,6 +46,8 @@ Public Class BuscadorFicherosForm
     Private cboUnidad As System.Windows.Forms.ComboBox
     Private txtIndice As System.Windows.Forms.TextBox
     Private btnExaminarIndice As System.Windows.Forms.Button
+    Private chkPartNumber As System.Windows.Forms.CheckBox
+    Private chkAutoUpdate As System.Windows.Forms.CheckBox
     Private btnIndexar As System.Windows.Forms.Button
     Private lblIndiceInfo As System.Windows.Forms.Label
     Private txtCodigo As System.Windows.Forms.TextBox
@@ -51,13 +60,12 @@ Public Class BuscadorFicherosForm
     Private lstResultados As System.Windows.Forms.ListView
     Private lblEstado As System.Windows.Forms.Label
 
-    ' Hilo de indexacion en segundo plano.
     Private hiloTrabajo As System.Threading.Thread
     Private cancelar As Boolean = False
     Private _cuentaIndexada As Integer = 0
     Private _errorTrabajo As String = ""
 
-    ' Indice en memoria (cache). Cada entrada: {ruta, nombreLower, extLower, ticks}.
+    ' Indice en memoria (cache). Entrada: {ruta, nombreLower, extLower, ticks, pnLower}.
     Private _indice As System.Collections.Generic.List(Of String())
     Private _indiceArchivo As String = ""
     Private _indiceFecha As Date = Date.MinValue
@@ -76,7 +84,7 @@ Public Class BuscadorFicherosForm
     Private Sub InicializarComponentes()
         Me.Text = "Buscar ficheros en la red (con indice)"
         Me.Width = 800
-        Me.Height = 660
+        Me.Height = 700
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
 
         Dim anchTLR As System.Windows.Forms.AnchorStyles = _
@@ -88,11 +96,9 @@ Public Class BuscadorFicherosForm
 
         ' --- Fila 1: carpeta a indexar ---
         Me.Controls.Add(Etiqueta("Carpeta a indexar:", 12, 15, 130))
-
         txtRuta = New System.Windows.Forms.TextBox()
         txtRuta.Left = 145 : txtRuta.Top = 12 : txtRuta.Width = 490 : txtRuta.Anchor = anchTLR
         Me.Controls.Add(txtRuta)
-
         btnExaminar = Boton("Examinar...", 660, 10, 115, 26, anchTR)
         AddHandler btnExaminar.Click, AddressOf OnExaminarRuta
         Me.Controls.Add(btnExaminar)
@@ -118,49 +124,56 @@ Public Class BuscadorFicherosForm
         txtIndice.Left = 145 : txtIndice.Top = 78 : txtIndice.Width = 490 : txtIndice.Anchor = anchTLR
         AddHandler txtIndice.TextChanged, AddressOf OnIndiceCarpetaChanged
         Me.Controls.Add(txtIndice)
-
         btnExaminarIndice = Boton("Examinar...", 660, 76, 115, 26, anchTR)
         AddHandler btnExaminarIndice.Click, AddressOf OnExaminarIndice
         Me.Controls.Add(btnExaminarIndice)
 
-        ' --- Fila 4: indexar ---
-        btnIndexar = Boton("Indexar ahora", 145, 108, 150, 28, _
+        ' --- Fila 4: opciones de indexado ---
+        chkPartNumber = New System.Windows.Forms.CheckBox()
+        chkPartNumber.Text = "Indexar tambien Nº de pieza (mas lento)"
+        chkPartNumber.Left = 145 : chkPartNumber.Top = 110 : chkPartNumber.Width = 290
+        Me.Controls.Add(chkPartNumber)
+        chkAutoUpdate = New System.Windows.Forms.CheckBox()
+        chkAutoUpdate.Text = "Actualizar indice al abrir"
+        chkAutoUpdate.Left = 445 : chkAutoUpdate.Top = 110 : chkAutoUpdate.Width = 230
+        Me.Controls.Add(chkAutoUpdate)
+
+        ' --- Fila 5: indexar + info ---
+        btnIndexar = Boton("Indexar ahora", 145, 138, 150, 28, _
             System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left)
         AddHandler btnIndexar.Click, AddressOf OnIndexar
         Me.Controls.Add(btnIndexar)
-
-        lblIndiceInfo = Etiqueta("", 305, 113, 470)
+        lblIndiceInfo = Etiqueta("", 305, 143, 470)
         Me.Controls.Add(lblIndiceInfo)
 
-        ' --- Fila 5: codigo + buscar ---
-        Me.Controls.Add(Etiqueta("Codigo a buscar:", 12, 149, 130))
+        ' --- Fila 6: codigo + buscar ---
+        Me.Controls.Add(Etiqueta("Codigo a buscar:", 12, 179, 130))
         txtCodigo = New System.Windows.Forms.TextBox()
-        txtCodigo.Left = 145 : txtCodigo.Top = 146 : txtCodigo.Width = 490 : txtCodigo.Anchor = anchTLR
+        txtCodigo.Left = 145 : txtCodigo.Top = 176 : txtCodigo.Width = 490 : txtCodigo.Anchor = anchTLR
         AddHandler txtCodigo.KeyDown, AddressOf OnCodigoKeyDown
         Me.Controls.Add(txtCodigo)
-
-        btnBuscar = Boton("Buscar", 660, 144, 115, 26, anchTR)
+        btnBuscar = Boton("Buscar", 660, 174, 115, 26, anchTR)
         AddHandler btnBuscar.Click, AddressOf OnBuscar
         Me.Controls.Add(btnBuscar)
 
-        ' --- Fila 6: filtro por tipo ---
+        ' --- Fila 7: filtro por tipo ---
         rdoTodos = New System.Windows.Forms.RadioButton()
         rdoTodos.Text = "Todos" : rdoTodos.Checked = True
-        rdoTodos.Left = 145 : rdoTodos.Top = 178 : rdoTodos.Width = 70
+        rdoTodos.Left = 145 : rdoTodos.Top = 208 : rdoTodos.Width = 70
         Me.Controls.Add(rdoTodos)
         rdoPiezas = New System.Windows.Forms.RadioButton()
         rdoPiezas.Text = "Piezas (.ipt)"
-        rdoPiezas.Left = 220 : rdoPiezas.Top = 178 : rdoPiezas.Width = 110
+        rdoPiezas.Left = 220 : rdoPiezas.Top = 208 : rdoPiezas.Width = 110
         Me.Controls.Add(rdoPiezas)
         rdoEnsamblajes = New System.Windows.Forms.RadioButton()
         rdoEnsamblajes.Text = "Ensamblajes (.iam)"
-        rdoEnsamblajes.Left = 335 : rdoEnsamblajes.Top = 178 : rdoEnsamblajes.Width = 150
+        rdoEnsamblajes.Left = 335 : rdoEnsamblajes.Top = 208 : rdoEnsamblajes.Width = 150
         Me.Controls.Add(rdoEnsamblajes)
 
         ' --- Lista de resultados ---
         lstResultados = New System.Windows.Forms.ListView()
-        lstResultados.Left = 12 : lstResultados.Top = 208
-        lstResultados.Width = 763 : lstResultados.Height = 360
+        lstResultados.Left = 12 : lstResultados.Top = 238
+        lstResultados.Width = 763 : lstResultados.Height = 372
         lstResultados.View = System.Windows.Forms.View.Details
         lstResultados.FullRowSelect = True
         lstResultados.MultiSelect = False
@@ -168,34 +181,33 @@ Public Class BuscadorFicherosForm
             Or System.Windows.Forms.AnchorStyles.Bottom _
             Or System.Windows.Forms.AnchorStyles.Left _
             Or System.Windows.Forms.AnchorStyles.Right
-        lstResultados.Columns.Add("Nombre", 240)
-        lstResultados.Columns.Add("Tipo", 70)
-        lstResultados.Columns.Add("Modificado", 120)
-        lstResultados.Columns.Add("Ruta", 320)
+        lstResultados.Columns.Add("Nombre", 220)
+        lstResultados.Columns.Add("Nº pieza", 110)
+        lstResultados.Columns.Add("Tipo", 60)
+        lstResultados.Columns.Add("Modificado", 115)
+        lstResultados.Columns.Add("Ruta", 250)
         AddHandler lstResultados.DoubleClick, AddressOf OnAbrir
         Me.Controls.Add(lstResultados)
 
         ' --- Estado + botones ---
-        lblEstado = Etiqueta("Listo.", 12, 582, 380)
+        lblEstado = Etiqueta("Listo.", 12, 624, 380)
         lblEstado.Anchor = System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left
         Me.Controls.Add(lblEstado)
-
-        btnCancelar = Boton("Cancelar", 435, 577, 150, 30, _
+        btnCancelar = Boton("Cancelar", 435, 619, 150, 30, _
             System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
         btnCancelar.Enabled = False
         AddHandler btnCancelar.Click, AddressOf OnCancelar
         Me.Controls.Add(btnCancelar)
-
-        btnAbrir = Boton("Abrir en Inventor", 595, 577, 180, 30, _
+        btnAbrir = Boton("Abrir en Inventor", 595, 619, 180, 30, _
             System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
         AddHandler btnAbrir.Click, AddressOf OnAbrir
         Me.Controls.Add(btnAbrir)
 
         Me.AcceptButton = btnBuscar
 
-        ' Cargar ajustes guardados (rutas) o valores por defecto.
         CargarAjustes()
         ActualizarInfoIndice()
+        AddHandler Me.Shown, AddressOf OnShown
     End Sub
 
     ' --- Helpers de creacion de controles ---
@@ -213,7 +225,7 @@ Public Class BuscadorFicherosForm
         Return b
     End Function
 
-    ' --- Ajustes (recordar rutas) ---
+    ' --- Ajustes (recordar rutas y opciones) ---
     Private Function ArchivoAjustes() As String
         Return System.IO.Path.Combine(CarpetaConfig(), "ajustes.txt")
     End Function
@@ -221,24 +233,32 @@ Public Class BuscadorFicherosForm
     Private Sub CargarAjustes()
         Dim ruta As String = RUTA_DEFECTO
         Dim indice As String = CarpetaConfig()
+        Dim pn As Boolean = False
+        Dim auto As Boolean = False
         Try
             Dim a As String = ArchivoAjustes()
             If System.IO.File.Exists(a) Then
                 Dim ls() As String = System.IO.File.ReadAllLines(a)
                 If ls.Length >= 1 AndAlso ls(0).Trim() <> "" Then ruta = ls(0).Trim()
                 If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
+                If ls.Length >= 3 Then pn = (ls(2).Trim() = "1")
+                If ls.Length >= 4 Then auto = (ls(3).Trim() = "1")
             End If
         Catch
         End Try
         txtRuta.Text = ruta
         txtIndice.Text = indice
+        chkPartNumber.Checked = pn
+        chkAutoUpdate.Checked = auto
     End Sub
 
     Private Sub GuardarAjustes()
         Try
             System.IO.Directory.CreateDirectory(CarpetaConfig())
             System.IO.File.WriteAllText(ArchivoAjustes(), _
-                txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf)
+                txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf & _
+                If(chkPartNumber.Checked, "1", "0") & vbCrLf & _
+                If(chkAutoUpdate.Checked, "1", "0") & vbCrLf)
         Catch
         End Try
     End Sub
@@ -263,7 +283,16 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    ' --- Eventos de rutas ---
+    ' --- Eventos de rutas / arranque ---
+    Private Sub OnShown(sender As Object, e As System.EventArgs)
+        If chkAutoUpdate.Checked Then
+            Try
+                If System.IO.File.Exists(ArchivoIndice()) Then OnIndexar(Nothing, Nothing)
+            Catch
+            End Try
+        End If
+    End Sub
+
     Private Sub OnExaminarRuta(sender As Object, e As System.EventArgs)
         Dim r As String = ElegirCarpeta(txtRuta.Text)
         If r <> "" Then txtRuta.Text = r
@@ -304,7 +333,7 @@ Public Class BuscadorFicherosForm
         End If
     End Sub
 
-    ' ================= INDEXACION (segundo plano) =================
+    ' ================= INDEXACION =================
     Private Sub OnIndexar(sender As Object, e As System.EventArgs)
         If hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive Then Return
 
@@ -333,27 +362,63 @@ Public Class BuscadorFicherosForm
         btnBuscar.Enabled = False
         btnCancelar.Enabled = True
         Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
-        lblEstado.Text = "Indexando " & ruta & " ..."
 
         Dim archivo As String = ArchivoIndice()
-        hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexado(ruta, archivo))
-        hiloTrabajo.IsBackground = True
-        hiloTrabajo.Start()
+
+        If chkPartNumber.Checked Then
+            ' Completo: lee Nº de pieza con Apprentice. Hilo principal (con DoEvents).
+            lblEstado.Text = "Indexando con Nº de pieza (puede tardar)..."
+            EjecutarIndexadoCompleto(ruta, archivo)
+        Else
+            ' Rapido: solo nombre. Segundo plano.
+            lblEstado.Text = "Indexando " & ruta & " ..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo))
+            hiloTrabajo.IsBackground = True
+            hiloTrabajo.Start()
+        End If
     End Sub
 
-    Private Sub EjecutarIndexado(ruta As String, archivo As String)
+    ' Lee el indice existente a un diccionario  ruta -> {ticks, partnumber}.
+    Private Function CargarIndiceDiccionario(archivo As String) _
+            As System.Collections.Generic.Dictionary(Of String, String())
+        Dim d As New System.Collections.Generic.Dictionary(Of String, String())( _
+            System.StringComparer.OrdinalIgnoreCase)
+        Try
+            If System.IO.File.Exists(archivo) Then
+                For Each l As String In System.IO.File.ReadAllLines(archivo)
+                    If l = "" OrElse l.StartsWith("#") Then Continue For
+                    Dim p() As String = l.Split(CChar(vbTab))
+                    If p.Length < 2 Then Continue For
+                    Dim pn As String = ""
+                    If p.Length >= 3 Then pn = p(2)
+                    d(p(0)) = New String() {p(1), pn}
+                Next
+            End If
+        Catch
+        End Try
+        Return d
+    End Function
+
+    Private Sub EscribirEntrada(sw As System.IO.StreamWriter, ruta As String, _
+            ticks As Long, pn As String)
+        Dim pnLimpio As String = pn.Replace(vbTab, " ").Replace(vbCr, " ").Replace(vbLf, " ")
+        sw.WriteLine(ruta & vbTab & ticks.ToString() & vbTab & pnLimpio)
+    End Sub
+
+    ' --- Indexado RAPIDO (segundo plano, solo nombre; reutiliza Nº pieza previo) ---
+    Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String)
         _cuentaIndexada = 0
         _errorTrabajo = ""
+        Dim viejo = CargarIndiceDiccionario(archivo)
         Try
             Using sw As New System.IO.StreamWriter(archivo, False, System.Text.Encoding.UTF8)
                 sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta)
-                _cuentaIndexada = IndexarCarpeta(ruta, sw)
+                _cuentaIndexada = IndexarRapido(ruta, sw, viejo)
             End Using
         Catch ex As System.Exception
             _errorTrabajo = ex.Message
         End Try
-
-        _indice = Nothing  ' invalida la cache: el indice ha cambiado
+        _indice = Nothing
         Try
             If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
                 Me.Invoke(New System.Action(AddressOf FinIndexado))
@@ -362,44 +427,144 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    ' Recorre recursivamente escribiendo .ipt y .iam en el indice.
-    Private Function IndexarCarpeta(carpeta As String, sw As System.IO.StreamWriter) As Integer
+    Private Function IndexarRapido(carpeta As String, sw As System.IO.StreamWriter, _
+            viejo As System.Collections.Generic.Dictionary(Of String, String())) As Integer
         If cancelar Then Return 0
         Dim n As Integer = 0
-
         Dim ficheros() As String = Nothing
         Try
             ficheros = System.IO.Directory.GetFiles(carpeta)
         Catch
             Return 0
         End Try
-
         For Each f As String In ficheros
             If cancelar Then Return n
             Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
             If ext = ".ipt" OrElse ext = ".iam" Then
-                Dim ticks As Long
+                Dim ticks As Long = 0
                 Try
                     ticks = System.IO.File.GetLastWriteTime(f).Ticks
                 Catch
-                    ticks = 0
                 End Try
-                sw.WriteLine(f & vbTab & ticks.ToString())
+                ' Reutiliza Nº de pieza previo si el fichero no ha cambiado.
+                Dim pn As String = ""
+                Dim prev() As String = Nothing
+                If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then pn = prev(1)
+                EscribirEntrada(sw, f, ticks, pn)
                 n += 1
             End If
         Next
-
-        Dim subcarpetas() As String = Nothing
+        Dim subs() As String = Nothing
         Try
-            subcarpetas = System.IO.Directory.GetDirectories(carpeta)
+            subs = System.IO.Directory.GetDirectories(carpeta)
         Catch
             Return n
         End Try
-        For Each sc As String In subcarpetas
-            n += IndexarCarpeta(sc, sw)
+        For Each sc As String In subs
+            n += IndexarRapido(sc, sw, viejo)
             If cancelar Then Return n
         Next
         Return n
+    End Function
+
+    ' --- Indexado COMPLETO (hilo principal, lee Nº de pieza con Apprentice) ---
+    Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String)
+        _cuentaIndexada = 0
+        _errorTrabajo = ""
+        Dim viejo = CargarIndiceDiccionario(archivo)
+
+        Dim oApr As Inventor.ApprenticeServerComponent = Nothing
+        Try
+            oApr = New Inventor.ApprenticeServerComponent()
+        Catch
+            oApr = Nothing  ' sin Apprentice: se indexa solo el nombre
+        End Try
+
+        Try
+            Using sw As New System.IO.StreamWriter(archivo, False, System.Text.Encoding.UTF8)
+                sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta & vbTab & "PN")
+                _cuentaIndexada = IndexarCompleto(ruta, sw, viejo, oApr)
+            End Using
+        Catch ex As System.Exception
+            _errorTrabajo = ex.Message
+        End Try
+
+        oApr = Nothing
+        _indice = Nothing
+        FinIndexado()
+    End Sub
+
+    Private Function IndexarCompleto(carpeta As String, sw As System.IO.StreamWriter, _
+            viejo As System.Collections.Generic.Dictionary(Of String, String()), _
+            oApr As Inventor.ApprenticeServerComponent) As Integer
+        If cancelar Then Return 0
+        Dim n As Integer = 0
+        Dim ficheros() As String = Nothing
+        Try
+            ficheros = System.IO.Directory.GetFiles(carpeta)
+        Catch
+            Return 0
+        End Try
+        For Each f As String In ficheros
+            If cancelar Then Return n
+            Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
+            If ext = ".ipt" OrElse ext = ".iam" Then
+                Dim ticks As Long = 0
+                Try
+                    ticks = System.IO.File.GetLastWriteTime(f).Ticks
+                Catch
+                End Try
+
+                Dim pn As String = ""
+                Dim prev() As String = Nothing
+                If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then
+                    pn = prev(1)  ' sin cambios: reutiliza (no relee la iProperty)
+                ElseIf oApr IsNot Nothing Then
+                    pn = LeerNumeroPieza(oApr, f)
+                End If
+
+                EscribirEntrada(sw, f, ticks, pn)
+                n += 1
+                If (n Mod 20) = 0 Then
+                    lblEstado.Text = "Indexando con Nº de pieza... " & n.ToString() & " ficheros"
+                    System.Windows.Forms.Application.DoEvents()
+                End If
+            End If
+        Next
+        Dim subs() As String = Nothing
+        Try
+            subs = System.IO.Directory.GetDirectories(carpeta)
+        Catch
+            Return n
+        End Try
+        For Each sc As String In subs
+            n += IndexarCompleto(sc, sw, viejo, oApr)
+            If cancelar Then Return n
+        Next
+        Return n
+    End Function
+
+    ' Lee la iProperty "Part Number" sin abrir el fichero en pantalla.
+    Private Function LeerNumeroPieza(oApr As Inventor.ApprenticeServerComponent, ruta As String) As String
+        Dim pn As String = ""
+        Try
+            Dim oDoc As Inventor.ApprenticeServerDocument = oApr.Open(ruta)
+            Try
+                Dim v As Object = oDoc.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value
+                If v IsNot Nothing Then pn = v.ToString()
+            Catch
+            End Try
+            Try
+                oApr.Close()
+            Catch
+            End Try
+        Catch
+            Try
+                oApr.Close()
+            Catch
+            End Try
+        End Try
+        Return pn
     End Function
 
     Private Sub FinIndexado()
@@ -412,7 +577,7 @@ Public Class BuscadorFicherosForm
         If _errorTrabajo <> "" Then
             lblEstado.Text = "Error al indexar: " & _errorTrabajo
         ElseIf cancelar Then
-            lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros indexados)."
+            lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros)."
         Else
             lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam)."
         End If
@@ -432,14 +597,12 @@ Public Class BuscadorFicherosForm
         Return exts
     End Function
 
-    ' Carga el indice en memoria (con cache por fecha de modificacion).
     Private Function CargarIndice(archivo As String) As Boolean
         Try
             Dim fecha As Date = System.IO.File.GetLastWriteTime(archivo)
             If _indice IsNot Nothing AndAlso _indiceArchivo = archivo AndAlso _indiceFecha = fecha Then
                 Return True
             End If
-
             Dim lista As New System.Collections.Generic.List(Of String())
             For Each l As String In System.IO.File.ReadAllLines(archivo)
                 If l = "" OrElse l.StartsWith("#") Then Continue For
@@ -448,9 +611,10 @@ Public Class BuscadorFicherosForm
                 Dim ruta As String = p(0)
                 Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(ruta).ToLower()
                 Dim ext As String = System.IO.Path.GetExtension(ruta).ToLower()
-                lista.Add(New String() {ruta, nombre, ext, p(1)})
+                Dim pnLower As String = ""
+                If p.Length >= 3 Then pnLower = p(2).ToLower()
+                lista.Add(New String() {ruta, nombre, ext, p(1), pnLower})
             Next
-
             _indice = lista
             _indiceArchivo = archivo
             _indiceFecha = fecha
@@ -497,22 +661,26 @@ Public Class BuscadorFicherosForm
         Dim truncado As Boolean = False
 
         For Each entrada As String() In _indice
-            If exts.Contains(entrada(2)) AndAlso entrada(1).Contains(cod) Then
-                encontrados.Add(entrada)
-                If encontrados.Count >= MAX_RESULTADOS Then
-                    truncado = True
-                    Exit For
+            If exts.Contains(entrada(2)) Then
+                Dim coincide As Boolean = entrada(1).Contains(cod)
+                If Not coincide AndAlso entrada(4) <> "" Then coincide = entrada(4).Contains(cod)
+                If coincide Then
+                    encontrados.Add(entrada)
+                    If encontrados.Count >= MAX_RESULTADOS Then
+                        truncado = True
+                        Exit For
+                    End If
                 End If
             End If
         Next
 
-        ' Ordenar por fecha (mas reciente primero) usando los ticks.
         encontrados.Sort(Function(a, b) CLng(b(3)).CompareTo(CLng(a(3))))
 
         lstResultados.Items.Clear()
         For Each entrada As String() In encontrados
             Dim ruta As String = entrada(0)
             Dim item As New System.Windows.Forms.ListViewItem(System.IO.Path.GetFileName(ruta))
+            item.SubItems.Add(entrada(4))  ' Nº pieza (en minusculas tal cual se indexo)
             item.SubItems.Add(entrada(2).ToUpper().Replace(".", ""))
             Dim fechaStr As String = ""
             Try
@@ -552,9 +720,8 @@ Public Class BuscadorFicherosForm
 
         Dim ruta As String = lstResultados.SelectedItems(0).Tag.ToString()
         If Not System.IO.File.Exists(ruta) Then
-            System.Windows.Forms.MessageBox.Show("El fichero ya no existe (el indice puede estar " & _
-                "desactualizado, vuelve a indexar):" & vbCrLf & ruta, "Abrir", _
-                System.Windows.Forms.MessageBoxButtons.OK, _
+            System.Windows.Forms.MessageBox.Show("El fichero ya no existe (reindexa):" & vbCrLf & ruta, _
+                "Abrir", System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Warning)
             Return
         End If
