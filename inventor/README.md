@@ -29,10 +29,13 @@ En la parte superior de la ventana eliges:
 - **Indexar también Nº de pieza (más lento)**: además del nombre del archivo,
   lee la iProperty **"Número de pieza" (Part Number)** de cada `.ipt`/`.iam`
   usando el **Apprentice Server** de Inventor. Así puedes buscar por el código
-  aunque esté en el Nº de pieza y no en el nombre. Este modo va en el hilo
-  principal (con progreso y **Cancelar**) porque la API de Inventor no admite
-  hilos; la primera vez tarda más. Sin marcar, el indexado es **rápido** (solo
-  nombre) y corre en segundo plano.
+  aunque esté en el Nº de pieza y no en el nombre. La primera vez tarda más.
+  Sin marcar, el indexado es **rápido** (solo nombre).
+
+> **La indexación va siempre en segundo plano**: tras pulsar **Indexar ahora**
+> puedes **cerrar la ventana y seguir trabajando** en Inventor con normalidad;
+> el índice se sigue creando solo y queda guardado al terminar. Vuelve a abrir
+> la herramienta cuando quieras buscar.
 
 > La herramienta **nunca indexa sola**: solo se indexa cuando pulsas
 > **Indexar ahora**. Al abrir la regla únicamente se cargan las rutas guardadas.

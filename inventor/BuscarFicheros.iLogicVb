@@ -414,17 +414,22 @@ Public Class BuscadorFicherosForm
 
         Dim archivo As String = ArchivoIndiceActual()
 
+        ' Ambos modos se ejecutan en SEGUNDO PLANO: puedes cerrar la ventana
+        ' y seguir trabajando en Inventor; el indice se sigue creando.
         If chkPartNumber.Checked Then
-            ' Completo: lee Nº de pieza con Apprentice. Hilo principal (con DoEvents).
-            lblEstado.Text = "Indexando con Nº de pieza (puede tardar)..."
-            EjecutarIndexadoCompleto(ruta, archivo)
+            lblEstado.Text = "Indexando con Nº de pieza en segundo plano (puedes cerrar y seguir trabajando)..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoCompleto(ruta, archivo))
         Else
-            ' Rapido: solo nombre. Segundo plano.
-            lblEstado.Text = "Indexando " & ruta & " ..."
+            lblEstado.Text = "Indexando en segundo plano (puedes cerrar y seguir trabajando): " & ruta & " ..."
             hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo))
-            hiloTrabajo.IsBackground = True
-            hiloTrabajo.Start()
         End If
+        hiloTrabajo.IsBackground = True
+        ' STA: necesario para usar COM (Apprentice Server) desde el hilo.
+        Try
+            hiloTrabajo.SetApartmentState(System.Threading.ApartmentState.STA)
+        Catch
+        End Try
+        hiloTrabajo.Start()
     End Sub
 
     ' Lee el indice existente a un diccionario  ruta -> {ticks, partnumber}.
@@ -545,7 +550,7 @@ Public Class BuscadorFicherosForm
         lblEstado.Text = "Indexando... " & _progreso.ToString() & " ficheros"
     End Sub
 
-    ' --- Indexado COMPLETO (hilo principal, lee Nº de pieza con Apprentice) ---
+    ' --- Indexado COMPLETO (segundo plano, lee Nº de pieza con Apprentice) ---
     Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String)
         _cuentaIndexada = 0
         _progreso = 0
@@ -573,7 +578,12 @@ Public Class BuscadorFicherosForm
 
         oApr = Nothing
         _indice = Nothing
-        FinIndexado()
+        Try
+            If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
+                Me.Invoke(New System.Action(AddressOf FinIndexado))
+            End If
+        Catch
+        End Try
     End Sub
 
     Private Function IndexarCompleto(carpeta As String, sw As System.IO.StreamWriter, _
@@ -608,10 +618,7 @@ Public Class BuscadorFicherosForm
                 EscribirEntrada(sw, f, ticks, pn)
                 n += 1
                 _progreso += 1
-                If (_progreso Mod 20) = 0 Then
-                    lblEstado.Text = "Indexando con Nº de pieza... " & _progreso.ToString() & " ficheros"
-                    System.Windows.Forms.Application.DoEvents()
-                End If
+                If (_progreso Mod 20) = 0 Then ActualizarProgresoAsync()
             End If
         Next
         Dim subs() As String = Nothing
