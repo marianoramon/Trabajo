@@ -21,32 +21,37 @@ Imports System.Windows.Forms
 Imports System.Collections.Generic
 
 ' ----------------------- CODIGO PRINCIPAL ----------------------------
+' iLogic exige que el codigo principal vaya dentro de Sub Main().
 
-' Carpetas de red donde buscar. EDITA esta lista con tus rutas.
-' Acepta rutas UNC (\\servidor\carpeta) o unidades mapeadas (Q:\DISENOS).
-Dim carpetas As New List(Of String)
-carpetas.Add("\\servidor\DISEÑOS")
-carpetas.Add("Q:\DISEÑOS")
+Sub Main()
 
-' Si existe un fichero de configuracion, sus carpetas tienen prioridad.
-' Asi puedes cambiar las rutas sin editar la regla.
-Dim configPath As String = System.IO.Path.Combine( _
-    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), _
-    "BuscadorInventor", "carpetas.txt")
-If System.IO.File.Exists(configPath) Then
-    Dim lineas() As String = System.IO.File.ReadAllLines(configPath)
-    Dim desdeFichero As New List(Of String)
-    For Each l As String In lineas
-        If l.Trim() <> "" AndAlso Not l.Trim().StartsWith("#") Then
-            desdeFichero.Add(l.Trim())
-        End If
-    Next
-    If desdeFichero.Count > 0 Then carpetas = desdeFichero
-End If
+    ' Carpetas de red donde buscar. EDITA esta lista con tus rutas.
+    ' Acepta rutas UNC (\\servidor\carpeta) o unidades mapeadas (Q:\DISENOS).
+    Dim carpetas As New List(Of String)
+    carpetas.Add("\\servidor\DISEÑOS")
+    carpetas.Add("Q:\DISEÑOS")
 
-' Abrir la ventana del buscador (modal).
-Dim frm As New BuscadorFicherosForm(ThisApplication, carpetas)
-frm.ShowDialog()
+    ' Si existe un fichero de configuracion, sus carpetas tienen prioridad.
+    ' Asi puedes cambiar las rutas sin editar la regla.
+    Dim configPath As String = System.IO.Path.Combine( _
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), _
+        "BuscadorInventor", "carpetas.txt")
+    If System.IO.File.Exists(configPath) Then
+        Dim lineas() As String = System.IO.File.ReadAllLines(configPath)
+        Dim desdeFichero As New List(Of String)
+        For Each l As String In lineas
+            If l.Trim() <> "" AndAlso Not l.Trim().StartsWith("#") Then
+                desdeFichero.Add(l.Trim())
+            End If
+        Next
+        If desdeFichero.Count > 0 Then carpetas = desdeFichero
+    End If
+
+    ' Abrir la ventana del buscador (modal).
+    Dim frm As New BuscadorFicherosForm(ThisApplication, carpetas)
+    frm.ShowDialog()
+
+End Sub
 
 
 ' ----------------------- VENTANA DEL BUSCADOR ------------------------
