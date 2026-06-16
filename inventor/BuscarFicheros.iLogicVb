@@ -354,7 +354,7 @@ Public Class BuscadorFicherosForm
                 ex.Message, "Indexar", System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Error)
             Return
-        End If
+        End Try
 
         GuardarAjustes()
         cancelar = False
