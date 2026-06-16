@@ -16,7 +16,7 @@
 '  Reindexado INCREMENTAL: reutiliza el Nº de pieza de los ficheros que no
 '  han cambiado (no los vuelve a leer).  Opcion "Actualizar al abrir".
 '
-'  Se indexan piezas (.ipt), ensamblajes (.iam) y planos (.idw / .dwg). Se
+'  Se indexan piezas (.ipt), ensamblajes (.iam) y planos (.idw). Se
 '  EXCLUYEN las copias de seguridad de Inventor (carpeta "OldVersions"). La
 '  busqueda compara el codigo con el NOMBRE del fichero y con el Nº DE PIEZA.
 '
@@ -172,7 +172,7 @@ Public Class BuscadorFicherosForm
         rdoEnsamblajes.Left = 335 : rdoEnsamblajes.Top = 208 : rdoEnsamblajes.Width = 150
         Me.Controls.Add(rdoEnsamblajes)
         rdoPlanos = New System.Windows.Forms.RadioButton()
-        rdoPlanos.Text = "Planos (.idw/.dwg)"
+        rdoPlanos.Text = "Planos (.idw)"
         rdoPlanos.Left = 490 : rdoPlanos.Top = 208 : rdoPlanos.Width = 160
         Me.Controls.Add(rdoPlanos)
 
@@ -665,7 +665,7 @@ Public Class BuscadorFicherosForm
         ElseIf cancelar Then
             lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros)."
         Else
-            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam/.idw/.dwg)."
+            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam/.idw)."
         End If
     End Sub
 
@@ -678,19 +678,17 @@ Public Class BuscadorFicherosForm
             exts.Add(".iam")
         ElseIf rdoPlanos.Checked Then
             exts.Add(".idw")
-            exts.Add(".dwg")
         Else
             exts.Add(".ipt")
             exts.Add(".iam")
             exts.Add(".idw")
-            exts.Add(".dwg")
         End If
         Return exts
     End Function
 
     ' Tipos que se indexan: piezas, ensamblajes y planos.
     Private Function EsIndexable(ext As String) As Boolean
-        Return ext = ".ipt" OrElse ext = ".iam" OrElse ext = ".idw" OrElse ext = ".dwg"
+        Return ext = ".ipt" OrElse ext = ".iam" OrElse ext = ".idw"
     End Function
 
     ' Carpetas a excluir (copias de seguridad de Inventor).
