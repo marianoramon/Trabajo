@@ -1,0 +1,279 @@
+' =====================================================================
+'  BUSCADOR DE FICHEROS EN LA RED  -  Regla iLogic para Autodesk Inventor
+' =====================================================================
+'
+'  Busca piezas (.ipt) y ensamblajes (.iam) en las carpetas de red por
+'  el codigo que escribas, y permite abrirlos directamente en Inventor.
+'
+'  COMO INSTALARLA (resumen, ver README.md para el detalle):
+'    1. Pestana "Herramientas" > "iLogic" > "Reglas externas" (Add Rule).
+'    2. Anade esta regla como Regla Externa, o pega el contenido en una
+'       regla nueva de un documento.
+'    3. Configura las carpetas de red abajo (lista CARPETAS) o en el
+'       fichero de texto:  Documentos\BuscadorInventor\carpetas.txt
+'
+'  Compatible con Inventor 2019 o posterior (permite clases en iLogic).
+' =====================================================================
+
+Imports System.IO
+Imports System.Drawing
+Imports System.Windows.Forms
+Imports System.Collections.Generic
+
+' ----------------------- CODIGO PRINCIPAL ----------------------------
+
+' Carpetas de red donde buscar. EDITA esta lista con tus rutas.
+' Acepta rutas UNC (\\servidor\carpeta) o unidades mapeadas (Q:\DISENOS).
+Dim carpetas As New List(Of String)
+carpetas.Add("\\servidor\DISEÑOS")
+carpetas.Add("Q:\DISEÑOS")
+
+' Si existe un fichero de configuracion, sus carpetas tienen prioridad.
+' Asi puedes cambiar las rutas sin editar la regla.
+Dim configPath As String = System.IO.Path.Combine( _
+    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), _
+    "BuscadorInventor", "carpetas.txt")
+If System.IO.File.Exists(configPath) Then
+    Dim lineas() As String = System.IO.File.ReadAllLines(configPath)
+    Dim desdeFichero As New List(Of String)
+    For Each l As String In lineas
+        If l.Trim() <> "" AndAlso Not l.Trim().StartsWith("#") Then
+            desdeFichero.Add(l.Trim())
+        End If
+    Next
+    If desdeFichero.Count > 0 Then carpetas = desdeFichero
+End If
+
+' Abrir la ventana del buscador (modal).
+Dim frm As New BuscadorFicherosForm(ThisApplication, carpetas)
+frm.ShowDialog()
+
+
+' ----------------------- VENTANA DEL BUSCADOR ------------------------
+
+Public Class BuscadorFicherosForm
+    Inherits System.Windows.Forms.Form
+
+    Private oApp As Inventor.Application
+    Private carpetas As List(Of String)
+
+    Private txtCodigo As TextBox
+    Private rdoTodos As RadioButton
+    Private rdoPiezas As RadioButton
+    Private rdoEnsamblajes As RadioButton
+    Private btnBuscar As Button
+    Private btnAbrir As Button
+    Private lstResultados As ListView
+    Private lblEstado As Label
+
+    Private Const MAX_RESULTADOS As Integer = 500
+
+    Public Sub New(app As Inventor.Application, listaCarpetas As List(Of String))
+        oApp = app
+        carpetas = listaCarpetas
+        InicializarComponentes()
+    End Sub
+
+    Private Sub InicializarComponentes()
+        Me.Text = "Buscar ficheros en la red"
+        Me.Width = 760
+        Me.Height = 520
+        Me.StartPosition = FormStartPosition.CenterScreen
+        Me.MinimumSize = New Size(620, 420)
+
+        ' --- Etiqueta + caja de codigo ---
+        Dim lblCodigo As New Label()
+        lblCodigo.Text = "Codigo a buscar:"
+        lblCodigo.Left = 12 : lblCodigo.Top = 15 : lblCodigo.Width = 110
+        Me.Controls.Add(lblCodigo)
+
+        txtCodigo = New TextBox()
+        txtCodigo.Left = 125 : txtCodigo.Top = 12 : txtCodigo.Width = 360
+        txtCodigo.Anchor = AnchorStyles.Top Or AnchorStyles.Left Or AnchorStyles.Right
+        AddHandler txtCodigo.KeyDown, AddressOf OnCodigoKeyDown
+        Me.Controls.Add(txtCodigo)
+
+        btnBuscar = New Button()
+        btnBuscar.Text = "Buscar"
+        btnBuscar.Left = 495 : btnBuscar.Top = 10 : btnBuscar.Width = 110 : btnBuscar.Height = 26
+        btnBuscar.Anchor = AnchorStyles.Top Or AnchorStyles.Right
+        AddHandler btnBuscar.Click, AddressOf OnBuscar
+        Me.Controls.Add(btnBuscar)
+
+        ' --- Filtro por tipo ---
+        rdoTodos = New RadioButton()
+        rdoTodos.Text = "Todos" : rdoTodos.Checked = True
+        rdoTodos.Left = 125 : rdoTodos.Top = 44 : rdoTodos.Width = 70
+        Me.Controls.Add(rdoTodos)
+
+        rdoPiezas = New RadioButton()
+        rdoPiezas.Text = "Piezas (.ipt)"
+        rdoPiezas.Left = 200 : rdoPiezas.Top = 44 : rdoPiezas.Width = 110
+        Me.Controls.Add(rdoPiezas)
+
+        rdoEnsamblajes = New RadioButton()
+        rdoEnsamblajes.Text = "Ensamblajes (.iam)"
+        rdoEnsamblajes.Left = 315 : rdoEnsamblajes.Top = 44 : rdoEnsamblajes.Width = 150
+        Me.Controls.Add(rdoEnsamblajes)
+
+        ' --- Lista de resultados ---
+        lstResultados = New ListView()
+        lstResultados.Left = 12 : lstResultados.Top = 75
+        lstResultados.Width = 730 : lstResultados.Height = 360
+        lstResultados.View = View.Details
+        lstResultados.FullRowSelect = True
+        lstResultados.MultiSelect = False
+        lstResultados.Anchor = AnchorStyles.Top Or AnchorStyles.Bottom _
+            Or AnchorStyles.Left Or AnchorStyles.Right
+        lstResultados.Columns.Add("Nombre", 220)
+        lstResultados.Columns.Add("Tipo", 90)
+        lstResultados.Columns.Add("Modificado", 120)
+        lstResultados.Columns.Add("Ruta", 290)
+        AddHandler lstResultados.DoubleClick, AddressOf OnAbrir
+        Me.Controls.Add(lstResultados)
+
+        ' --- Estado + boton abrir ---
+        lblEstado = New Label()
+        lblEstado.Left = 12 : lblEstado.Top = 445 : lblEstado.Width = 480
+        lblEstado.Anchor = AnchorStyles.Bottom Or AnchorStyles.Left
+        lblEstado.Text = carpetas.Count.ToString() & " carpeta(s) configurada(s)."
+        Me.Controls.Add(lblEstado)
+
+        btnAbrir = New Button()
+        btnAbrir.Text = "Abrir en Inventor"
+        btnAbrir.Left = 562 : btnAbrir.Top = 440 : btnAbrir.Width = 180 : btnAbrir.Height = 30
+        btnAbrir.Anchor = AnchorStyles.Bottom Or AnchorStyles.Right
+        AddHandler btnAbrir.Click, AddressOf OnAbrir
+        Me.Controls.Add(btnAbrir)
+
+        Me.AcceptButton = btnBuscar
+    End Sub
+
+    Private Sub OnCodigoKeyDown(sender As Object, e As KeyEventArgs)
+        If e.KeyCode = Keys.Enter Then
+            OnBuscar(sender, e)
+            e.SuppressKeyPress = True
+        End If
+    End Sub
+
+    ' Devuelve las extensiones a buscar segun el filtro seleccionado.
+    Private Function ExtensionesActivas() As List(Of String)
+        Dim exts As New List(Of String)
+        If rdoPiezas.Checked Then
+            exts.Add(".ipt")
+        ElseIf rdoEnsamblajes.Checked Then
+            exts.Add(".iam")
+        Else
+            exts.Add(".ipt")
+            exts.Add(".iam")
+        End If
+        Return exts
+    End Function
+
+    Private Sub OnBuscar(sender As Object, e As EventArgs)
+        Dim codigo As String = txtCodigo.Text.Trim()
+        If codigo = "" Then
+            MessageBox.Show("Escribe un codigo para buscar.", "Buscador", _
+                MessageBoxButtons.OK, MessageBoxIcon.Information)
+            Return
+        End If
+
+        lstResultados.Items.Clear()
+        lblEstado.Text = "Buscando..."
+        Me.Cursor = Cursors.WaitCursor
+        Application.DoEvents()
+
+        Dim exts As List(Of String) = ExtensionesActivas()
+        Dim resultados As New List(Of String)
+        Dim truncado As Boolean = False
+
+        For Each carpeta As String In carpetas
+            If Not System.IO.Directory.Exists(carpeta) Then Continue For
+            BuscarEnCarpeta(carpeta, codigo, exts, resultados, truncado)
+            If truncado Then Exit For
+        Next
+
+        ' Ordenar por fecha de modificacion (mas reciente primero).
+        resultados.Sort(Function(a, b) _
+            System.IO.File.GetLastWriteTime(b).CompareTo(System.IO.File.GetLastWriteTime(a)))
+
+        For Each ruta As String In resultados
+            Dim fi As New FileInfo(ruta)
+            Dim item As New ListViewItem(fi.Name)
+            item.SubItems.Add(fi.Extension.ToUpper().Replace(".", ""))
+            item.SubItems.Add(fi.LastWriteTime.ToString("yyyy-MM-dd HH:mm"))
+            item.SubItems.Add(ruta)
+            item.Tag = ruta
+            lstResultados.Items.Add(item)
+        Next
+
+        Me.Cursor = Cursors.Default
+        Dim msg As String = resultados.Count.ToString() & " resultado(s) para """ & codigo & """."
+        If truncado Then msg &= " (limitado a " & MAX_RESULTADOS & ", afina el codigo)"
+        lblEstado.Text = msg
+
+        If lstResultados.Items.Count > 0 Then
+            lstResultados.Items(0).Selected = True
+            lstResultados.Select()
+        End If
+    End Sub
+
+    ' Recorre una carpeta y sus subcarpetas de forma segura ante errores
+    ' de permisos en la red.
+    Private Sub BuscarEnCarpeta(carpeta As String, codigo As String, _
+            exts As List(Of String), resultados As List(Of String), _
+            ByRef truncado As Boolean)
+
+        Dim ficheros() As String = Nothing
+        Try
+            ficheros = System.IO.Directory.GetFiles(carpeta)
+        Catch
+            Return  ' carpeta sin acceso: se ignora
+        End Try
+
+        Dim codigoLower As String = codigo.ToLower()
+        For Each f As String In ficheros
+            Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
+            If exts.Contains(ext) Then
+                Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(f).ToLower()
+                If nombre.Contains(codigoLower) Then
+                    resultados.Add(f)
+                    If resultados.Count >= MAX_RESULTADOS Then
+                        truncado = True
+                        Return
+                    End If
+                End If
+            End If
+        Next
+
+        Dim subcarpetas() As String = Nothing
+        Try
+            subcarpetas = System.IO.Directory.GetDirectories(carpeta)
+        Catch
+            Return
+        End Try
+        For Each sc As String In subcarpetas
+            BuscarEnCarpeta(sc, codigo, exts, resultados, truncado)
+            If truncado Then Return
+        Next
+    End Sub
+
+    Private Sub OnAbrir(sender As Object, e As EventArgs)
+        If lstResultados.SelectedItems.Count = 0 Then
+            MessageBox.Show("Selecciona un fichero de la lista.", "Buscador", _
+                MessageBoxButtons.OK, MessageBoxIcon.Information)
+            Return
+        End If
+
+        Dim ruta As String = lstResultados.SelectedItems(0).Tag.ToString()
+        Try
+            oApp.Documents.Open(ruta, True)
+            Me.Close()
+        Catch ex As Exception
+            MessageBox.Show("No se pudo abrir el fichero:" & vbCrLf & ruta & _
+                vbCrLf & vbCrLf & ex.Message, "Error al abrir", _
+                MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+End Class
