@@ -16,8 +16,9 @@
 '  Reindexado INCREMENTAL: reutiliza el Nº de pieza de los ficheros que no
 '  han cambiado (no los vuelve a leer).  Opcion "Actualizar al abrir".
 '
-'  Se indexan piezas (.ipt) y ensamblajes (.iam). La busqueda compara el
-'  codigo con el NOMBRE del fichero y con el Nº DE PIEZA.
+'  Se indexan piezas (.ipt), ensamblajes (.iam) y planos (.idw / .dwg). Se
+'  EXCLUYEN las copias de seguridad de Inventor (carpeta "OldVersions"). La
+'  busqueda compara el codigo con el NOMBRE del fichero y con el Nº DE PIEZA.
 '
 '  NOTA: iLogic auto-importa el namespace "Inventor" (choca con Application,
 '  View, TextBox, Environment...). Por eso TODO va cualificado con su ruta
@@ -53,6 +54,7 @@ Public Class BuscadorFicherosForm
     Private rdoTodos As System.Windows.Forms.RadioButton
     Private rdoPiezas As System.Windows.Forms.RadioButton
     Private rdoEnsamblajes As System.Windows.Forms.RadioButton
+    Private rdoPlanos As System.Windows.Forms.RadioButton
     Private btnBuscar As System.Windows.Forms.Button
     Private btnCancelar As System.Windows.Forms.Button
     Private btnAbrir As System.Windows.Forms.Button
@@ -63,6 +65,7 @@ Public Class BuscadorFicherosForm
     Private hiloTrabajo As System.Threading.Thread
     Private cancelar As Boolean = False
     Private _cuentaIndexada As Integer = 0
+    Private _progreso As Integer = 0
     Private _errorTrabajo As String = ""
 
     ' Indice en memoria (cache). Entrada: {ruta, nombreLower, extLower, ticks, pnLower}.
@@ -168,6 +171,10 @@ Public Class BuscadorFicherosForm
         rdoEnsamblajes.Text = "Ensamblajes (.iam)"
         rdoEnsamblajes.Left = 335 : rdoEnsamblajes.Top = 208 : rdoEnsamblajes.Width = 150
         Me.Controls.Add(rdoEnsamblajes)
+        rdoPlanos = New System.Windows.Forms.RadioButton()
+        rdoPlanos.Text = "Planos (.idw/.dwg)"
+        rdoPlanos.Left = 490 : rdoPlanos.Top = 208 : rdoPlanos.Width = 160
+        Me.Controls.Add(rdoPlanos)
 
         ' --- Lista de resultados ---
         lstResultados = New System.Windows.Forms.ListView()
@@ -466,6 +473,7 @@ Public Class BuscadorFicherosForm
     ' --- Indexado RAPIDO (segundo plano, solo nombre; reutiliza Nº pieza previo) ---
     Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String)
         _cuentaIndexada = 0
+        _progreso = 0
         _errorTrabajo = ""
         Dim viejo = CargarIndiceDiccionario(archivo)
         Try
@@ -498,7 +506,7 @@ Public Class BuscadorFicherosForm
         For Each f As String In ficheros
             If cancelar Then Return n
             Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
-            If ext = ".ipt" OrElse ext = ".iam" Then
+            If EsIndexable(ext) Then
                 Dim ticks As Long = 0
                 Try
                     ticks = System.IO.File.GetLastWriteTime(f).Ticks
@@ -510,6 +518,8 @@ Public Class BuscadorFicherosForm
                 If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then pn = prev(1)
                 EscribirEntrada(sw, f, ticks, pn)
                 n += 1
+                _progreso += 1
+                If (_progreso Mod 200) = 0 Then ActualizarProgresoAsync()
             End If
         Next
         Dim subs() As String = Nothing
@@ -519,15 +529,31 @@ Public Class BuscadorFicherosForm
             Return n
         End Try
         For Each sc As String In subs
+            If EsCarpetaExcluida(sc) Then Continue For
             n += IndexarRapido(sc, sw, viejo)
             If cancelar Then Return n
         Next
         Return n
     End Function
 
+    ' Actualiza el contador en la UI desde el hilo de fondo (no bloqueante).
+    Private Sub ActualizarProgresoAsync()
+        Try
+            If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
+                Me.BeginInvoke(New System.Action(AddressOf MostrarProgreso))
+            End If
+        Catch
+        End Try
+    End Sub
+
+    Private Sub MostrarProgreso()
+        lblEstado.Text = "Indexando... " & _progreso.ToString() & " ficheros"
+    End Sub
+
     ' --- Indexado COMPLETO (hilo principal, lee Nº de pieza con Apprentice) ---
     Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String)
         _cuentaIndexada = 0
+        _progreso = 0
         _errorTrabajo = ""
         Dim viejo = CargarIndiceDiccionario(archivo)
 
@@ -566,7 +592,7 @@ Public Class BuscadorFicherosForm
         For Each f As String In ficheros
             If cancelar Then Return n
             Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
-            If ext = ".ipt" OrElse ext = ".iam" Then
+            If EsIndexable(ext) Then
                 Dim ticks As Long = 0
                 Try
                     ticks = System.IO.File.GetLastWriteTime(f).Ticks
@@ -583,8 +609,9 @@ Public Class BuscadorFicherosForm
 
                 EscribirEntrada(sw, f, ticks, pn)
                 n += 1
-                If (n Mod 20) = 0 Then
-                    lblEstado.Text = "Indexando con Nº de pieza... " & n.ToString() & " ficheros"
+                _progreso += 1
+                If (_progreso Mod 20) = 0 Then
+                    lblEstado.Text = "Indexando con Nº de pieza... " & _progreso.ToString() & " ficheros"
                     System.Windows.Forms.Application.DoEvents()
                 End If
             End If
@@ -596,6 +623,7 @@ Public Class BuscadorFicherosForm
             Return n
         End Try
         For Each sc As String In subs
+            If EsCarpetaExcluida(sc) Then Continue For
             n += IndexarCompleto(sc, sw, viejo, oApr)
             If cancelar Then Return n
         Next
@@ -637,7 +665,7 @@ Public Class BuscadorFicherosForm
         ElseIf cancelar Then
             lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros)."
         Else
-            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam)."
+            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam/.idw/.dwg)."
         End If
     End Sub
 
@@ -648,11 +676,27 @@ Public Class BuscadorFicherosForm
             exts.Add(".ipt")
         ElseIf rdoEnsamblajes.Checked Then
             exts.Add(".iam")
+        ElseIf rdoPlanos.Checked Then
+            exts.Add(".idw")
+            exts.Add(".dwg")
         Else
             exts.Add(".ipt")
             exts.Add(".iam")
+            exts.Add(".idw")
+            exts.Add(".dwg")
         End If
         Return exts
+    End Function
+
+    ' Tipos que se indexan: piezas, ensamblajes y planos.
+    Private Function EsIndexable(ext As String) As Boolean
+        Return ext = ".ipt" OrElse ext = ".iam" OrElse ext = ".idw" OrElse ext = ".dwg"
+    End Function
+
+    ' Carpetas a excluir (copias de seguridad de Inventor).
+    Private Function EsCarpetaExcluida(carpeta As String) As Boolean
+        Dim nombre As String = System.IO.Path.GetFileName(carpeta.TrimEnd("\"c))
+        Return String.Equals(nombre, "OldVersions", System.StringComparison.OrdinalIgnoreCase)
     End Function
 
     ' Firma de los indices (rutas + fechas) para saber si hay que recargar.

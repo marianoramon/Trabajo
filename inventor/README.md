@@ -3,7 +3,9 @@
 Esta regla se ejecuta **dentro de Autodesk Inventor**. Funciona con un **índice**:
 recorre una vez la carpeta de red y guarda un fichero índice; después las
 búsquedas por **código** son **casi instantáneas** porque leen el índice, no la
-red. Encuentra **piezas (.ipt)** y **ensamblajes (.iam)** y los **abre** en Inventor.
+red. Encuentra **piezas (.ipt)**, **ensamblajes (.iam)** y **planos (.idw / .dwg)**
+y los **abre** en Inventor. Las **copias de seguridad** de Inventor (carpeta
+`OldVersions`) se **excluyen** y no aparecen en las búsquedas.
 
 Fichero de la regla: [`BuscarFicheros.iLogicVb`](BuscarFicheros.iLogicVb)
 
