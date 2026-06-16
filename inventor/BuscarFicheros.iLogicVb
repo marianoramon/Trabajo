@@ -65,6 +65,9 @@ Public Class BuscadorFicherosForm
     Private cancelar As Boolean = False
     Private _cuentaIndexada As Integer = 0
     Private _progreso As Integer = 0
+    Private _nPiezas As Integer = 0
+    Private _nEnsam As Integer = 0
+    Private _nPlanos As Integer = 0
     Private _errorTrabajo As String = ""
 
     ' Indice en memoria (cache). Entrada: {ruta, nombreLower, extLower, ticks, pnLower}.
@@ -447,6 +450,14 @@ Public Class BuscadorFicherosForm
 
     Private Sub EscribirEntrada(sw As System.IO.StreamWriter, ruta As String, _
             ticks As Long, pn As String)
+        Dim ext As String = System.IO.Path.GetExtension(ruta).ToLower()
+        If ext = ".ipt" Then
+            _nPiezas += 1
+        ElseIf ext = ".iam" Then
+            _nEnsam += 1
+        ElseIf ext = ".idw" Then
+            _nPlanos += 1
+        End If
         Dim pnLimpio As String = pn.Replace(vbTab, " ").Replace(vbCr, " ").Replace(vbLf, " ")
         sw.WriteLine(ruta & vbTab & ticks.ToString() & vbTab & pnLimpio)
     End Sub
@@ -455,6 +466,9 @@ Public Class BuscadorFicherosForm
     Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String)
         _cuentaIndexada = 0
         _progreso = 0
+        _nPiezas = 0
+        _nEnsam = 0
+        _nPlanos = 0
         _errorTrabajo = ""
         Dim viejo = CargarIndiceDiccionario(archivo)
         Try
@@ -535,6 +549,9 @@ Public Class BuscadorFicherosForm
     Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String)
         _cuentaIndexada = 0
         _progreso = 0
+        _nPiezas = 0
+        _nEnsam = 0
+        _nPlanos = 0
         _errorTrabajo = ""
         Dim viejo = CargarIndiceDiccionario(archivo)
 
@@ -646,7 +663,9 @@ Public Class BuscadorFicherosForm
         ElseIf cancelar Then
             lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros)."
         Else
-            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (.ipt/.iam/.idw)."
+            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (" & _
+                _nPiezas.ToString() & " piezas, " & _nEnsam.ToString() & " ensamblajes, " & _
+                _nPlanos.ToString() & " planos)."
         End If
     End Sub
 
