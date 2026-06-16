@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Addin Type="Standard">
+  <!-- Manifiesto del complemento de Inventor. -->
+  <!-- ClassId y ClientId deben coincidir con el Guid de StandardAddInServer. -->
+  <ClassId>{7F3D2A1C-9B4E-4C2A-8E1F-3C5D6A7B8E90}</ClassId>
+  <ClientId>{7F3D2A1C-9B4E-4C2A-8E1F-3C5D6A7B8E90}</ClientId>
+  <DisplayName>Buscador de Ficheros</DisplayName>
+  <Description>Busca piezas y ensamblajes en la red por código.</Description>
+  <Assembly>BuscadorFicheros.dll</Assembly>
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <UserUnloadable>1</UserUnloadable>
+  <Hidden>0</Hidden>
+  <SupportedSoftwareVersionGreaterThan>22..</SupportedSoftwareVersionGreaterThan>
+  <DataVersion>1</DataVersion>
+</Addin>

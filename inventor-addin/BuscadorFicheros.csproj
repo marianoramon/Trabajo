@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Complemento (Add-In) de Autodesk Inventor.
+    Se compila como una DLL .NET Framework 4.8 que Inventor carga vía COM.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>BuscadorFicheros</AssemblyName>
+    <RootNamespace>BuscadorFicheros</RootNamespace>
+    <!-- Usamos nuestro propio AssemblyInfo.cs (GUID + ComVisible). -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Platforms>AnyCPU</Platforms>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Referencia a la API de Inventor. AJUSTA la ruta a tu versión instalada.
+      Suele estar en:
+        C:\Program Files\Autodesk\Inventor <AÑO>\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll
+    -->
+    <Reference Include="Autodesk.Inventor.Interop">
+      <HintPath>C:\Program Files\Autodesk\Inventor 2024\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll</HintPath>
+      <EmbedInteropTypes>False</EmbedInteropTypes>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Copia el manifiesto .addin junto a la DLL al compilar. -->
+  <ItemGroup>
+    <None Update="BuscadorFicheros.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
