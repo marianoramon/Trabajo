@@ -10,33 +10,41 @@ Fichero de la regla: [`BuscarFicheros.iLogicVb`](BuscarFicheros.iLogicVb)
 
 ---
 
-## 1. Configurar las carpetas de red
+## 1. Elegir dónde buscar
+
+La ruta donde buscar **se elige en la propia ventana**, en la parte superior:
+
+- **Carpeta**: caja de texto editable con la ruta (UNC o unidad). Por defecto
+  `P:\`. Puedes escribir cualquier ruta o subcarpeta para acotar la búsqueda
+  (cuanto más concreta, más rápida).
+- **Examinar...**: abre un explorador para elegir la carpeta cómodamente.
+- **Unidad**: desplegable con la *ruta de red* (`\\192.168.10.217\DISEÑO`) y
+  todas las unidades del equipo (`P:\`, `Q:\`…). Al elegir una, rellena la ruta.
+
+### Cambiar la ruta por defecto
 
 Tienes dos opciones:
 
 **Opción A — Editar la regla** (rápido)
-Abre `BuscarFicheros.iLogicVb` y cambia la lista del principio:
+Cambia la constante del principio de la clase:
 
 ```vb
-carpetas.Add("\\servidor\DISEÑOS")
-carpetas.Add("Q:\DISEÑOS")
+Private Const RUTA_DEFECTO As String = "P:\"
+Private Const RUTA_RED     As String = "\\192.168.10.217\DISEÑO"
 ```
 
-**Opción B — Fichero de configuración** (recomendado, no tocas la regla)
-Crea el fichero de texto:
+**Opción B — Fichero de configuración** (no tocas la regla)
+Crea `Documentos\BuscadorInventor\carpetas.txt`. La **primera línea útil**
+(que no empiece por `#`) se usa como ruta por defecto:
 
 ```
-Documentos\BuscadorInventor\carpetas.txt
+P:\
 ```
 
-Una ruta por línea (las líneas que empiezan por `#` se ignoran):
-
-```
-\\servidor\DISEÑOS
-Q:\CORTE LASER
-```
-
-Si este fichero existe, sus carpetas tienen prioridad sobre la lista de la regla.
+> La búsqueda se ejecuta en **segundo plano**, así que Inventor **no se
+> congela** aunque la carpeta sea grande. Puedes pulsar **Cancelar** en
+> cualquier momento. Aun así, evita buscar en la raíz de un recurso enorme:
+> acota con *Examinar...* a la subcarpeta del proyecto siempre que puedas.
 
 ---
 
