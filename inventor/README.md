@@ -1,8 +1,9 @@
 # Buscador de ficheros dentro de Autodesk Inventor (regla iLogic)
 
-Esta regla se ejecuta **dentro de Autodesk Inventor**. Escribes un **código**
-y te busca las **piezas (.ipt)** y **ensamblajes (.iam)** que lo contienen en
-las carpetas de red, y te permite **abrirlos directamente** en Inventor.
+Esta regla se ejecuta **dentro de Autodesk Inventor**. Funciona con un **índice**:
+recorre una vez la carpeta de red y guarda un fichero índice; después las
+búsquedas por **código** son **casi instantáneas** porque leen el índice, no la
+red. Encuentra **piezas (.ipt)** y **ensamblajes (.iam)** y los **abre** en Inventor.
 
 Fichero de la regla: [`BuscarFicheros.iLogicVb`](BuscarFicheros.iLogicVb)
 
@@ -10,41 +11,38 @@ Fichero de la regla: [`BuscarFicheros.iLogicVb`](BuscarFicheros.iLogicVb)
 
 ---
 
-## 1. Elegir dónde buscar
+## 1. Cómo funciona (índice + búsqueda)
 
-La ruta donde buscar **se elige en la propia ventana**, en la parte superior:
+En la parte superior de la ventana eliges:
 
-- **Carpeta**: caja de texto editable con la ruta (UNC o unidad). Por defecto
-  `P:\`. Puedes escribir cualquier ruta o subcarpeta para acotar la búsqueda
-  (cuanto más concreta, más rápida).
-- **Examinar...**: abre un explorador para elegir la carpeta cómodamente.
-- **Unidad**: desplegable con la *ruta de red* (`\\192.168.10.217\DISEÑO`) y
-  todas las unidades del equipo (`P:\`, `Q:\`…). Al elegir una, rellena la ruta.
+- **Carpeta a indexar**: la ruta de red que se recorrerá (UNC o unidad). Por
+  defecto `P:\`. Botón **Examinar...** y desplegable **Unidad** (incluye la
+  *ruta de red* `\\192.168.10.217\DISEÑO` y tus unidades `P:\`, `Q:\`…).
+- **Carpeta del índice**: dónde se guarda el fichero índice `IndiceBuscador.txt`.
+  Por defecto `Documentos\BuscadorInventor`. Puedes ponerlo en una carpeta de
+  red para **compartir el índice con todo el equipo**.
 
-### Cambiar la ruta por defecto
+### Flujo de uso
 
-Tienes dos opciones:
+1. **Indexar ahora** (una vez, o cuando haya cambios): recorre la carpeta en
+   **segundo plano** (no congela Inventor; se puede **Cancelar**) y guarda el
+   índice. Te dice cuántos ficheros ha indexado.
+2. **Buscar**: escribe el código, elige *Todos / Piezas / Ensamblajes* y pulsa
+   **Buscar**. Lee el índice en memoria → resultados al instante.
+3. Selecciona un resultado y **Abrir en Inventor** (o doble clic).
 
-**Opción A — Editar la regla** (rápido)
-Cambia la constante del principio de la clase:
+> El índice es una "foto" del momento en que se creó. Si añades o mueves
+> ficheros, vuelve a pulsar **Indexar ahora** para actualizarlo. Si abres un
+> fichero que ya no existe, la regla te avisa de que reindexes.
+
+Las rutas elegidas se **recuerdan** entre sesiones en
+`Documentos\BuscadorInventor\ajustes.txt`. Para cambiar los valores por defecto
+de fábrica, edita las constantes al principio de la clase:
 
 ```vb
 Private Const RUTA_DEFECTO As String = "P:\"
 Private Const RUTA_RED     As String = "\\192.168.10.217\DISEÑO"
 ```
-
-**Opción B — Fichero de configuración** (no tocas la regla)
-Crea `Documentos\BuscadorInventor\carpetas.txt`. La **primera línea útil**
-(que no empiece por `#`) se usa como ruta por defecto:
-
-```
-P:\
-```
-
-> La búsqueda se ejecuta en **segundo plano**, así que Inventor **no se
-> congela** aunque la carpeta sea grande. Puedes pulsar **Cancelar** en
-> cualquier momento. Aun así, evita buscar en la raíz de un recurso enorme:
-> acota con *Examinar...* a la subcarpeta del proyecto siempre que puedas.
 
 ---
 
