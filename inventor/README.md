@@ -39,14 +39,30 @@ En la parte superior de la ventana eliges:
 primera indexación completa tarda, pero las siguientes son rápidas (solo se
 leen los ficheros nuevos o modificados).
 
+### Varias unidades de red (varios índices)
+
+Puedes indexar **varias unidades/carpetas de red**, cada una en su **propio
+fichero** de índice: `IndiceBuscador_<ruta>.txt` dentro de la carpeta del índice.
+
+- Para añadir una unidad: pon su ruta en **Carpeta a indexar** (o elígela en
+  **Unidad**) y pulsa **Indexar ahora**. Se crea/actualiza su índice.
+- Repite con otra unidad → se crea otro fichero de índice.
+- La **búsqueda usa TODOS los índices** de la carpeta a la vez (combina los
+  resultados y elimina duplicados). El recuadro de info muestra cuántos índices
+  hay y qué carpetas raíz cubren.
+
 ### Flujo de uso
 
-1. **Indexar ahora** (una vez, o cuando haya cambios): recorre la carpeta y
-   guarda el índice. Te dice cuántos ficheros ha indexado.
+1. **Indexar ahora** cada unidad (una vez, o cuando haya cambios). Te dice
+   cuántos ficheros ha indexado.
 2. **Buscar**: escribe el código, elige *Todos / Piezas / Ensamblajes* y pulsa
-   **Buscar**. La búsqueda compara el código con el **nombre** del archivo y con
-   el **Nº de pieza** indexado. Resultados al instante.
-3. Selecciona un resultado y **Abrir en Inventor** (o doble clic).
+   **Buscar**. Busca en **todos los índices** comparando el código con el
+   **nombre** del archivo y con el **Nº de pieza**. Resultados al instante.
+3. Con un resultado seleccionado:
+   - **Abrir en Inventor** (o doble clic) → lo abre en Inventor.
+   - **Abrir carpeta** → abre el **Explorador de Windows** con el fichero
+     seleccionado.
+   - La columna **Ruta** muestra la ubicación completa del fichero.
 
 > El índice es una "foto" del momento en que se creó. Si añades o mueves
 > ficheros, pulsa **Indexar ahora** (o activa *Actualizar al abrir*). Si abres

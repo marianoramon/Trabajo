@@ -36,7 +36,6 @@ Public Class BuscadorFicherosForm
     ' Valores por defecto. EDITA estas lineas si cambian tus rutas.
     Private Const RUTA_DEFECTO As String = "P:\"
     Private Const RUTA_RED As String = "\\192.168.10.217\DISEÑO"
-    Private Const NOMBRE_INDICE As String = "IndiceBuscador.txt"
     Private Const MAX_RESULTADOS As Integer = 2000
 
     Private oApp As Inventor.Application
@@ -57,6 +56,7 @@ Public Class BuscadorFicherosForm
     Private btnBuscar As System.Windows.Forms.Button
     Private btnCancelar As System.Windows.Forms.Button
     Private btnAbrir As System.Windows.Forms.Button
+    Private btnAbrirCarpeta As System.Windows.Forms.Button
     Private lstResultados As System.Windows.Forms.ListView
     Private lblEstado As System.Windows.Forms.Label
 
@@ -67,8 +67,7 @@ Public Class BuscadorFicherosForm
 
     ' Indice en memoria (cache). Entrada: {ruta, nombreLower, extLower, ticks, pnLower}.
     Private _indice As System.Collections.Generic.List(Of String())
-    Private _indiceArchivo As String = ""
-    Private _indiceFecha As Date = Date.MinValue
+    Private _indiceFirma As String = ""
 
     Public Sub New(app As Inventor.Application)
         oApp = app
@@ -190,15 +189,19 @@ Public Class BuscadorFicherosForm
         Me.Controls.Add(lstResultados)
 
         ' --- Estado + botones ---
-        lblEstado = Etiqueta("Listo.", 12, 624, 380)
+        lblEstado = Etiqueta("Listo.", 12, 624, 300)
         lblEstado.Anchor = System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left
         Me.Controls.Add(lblEstado)
-        btnCancelar = Boton("Cancelar", 435, 619, 150, 30, _
+        btnCancelar = Boton("Cancelar", 318, 619, 100, 30, _
             System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
         btnCancelar.Enabled = False
         AddHandler btnCancelar.Click, AddressOf OnCancelar
         Me.Controls.Add(btnCancelar)
-        btnAbrir = Boton("Abrir en Inventor", 595, 619, 180, 30, _
+        btnAbrirCarpeta = Boton("Abrir carpeta", 425, 619, 160, 30, _
+            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
+        AddHandler btnAbrirCarpeta.Click, AddressOf OnAbrirCarpeta
+        Me.Controls.Add(btnAbrirCarpeta)
+        btnAbrir = Boton("Abrir en Inventor", 592, 619, 183, 30, _
             System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
         AddHandler btnAbrir.Click, AddressOf OnAbrir
         Me.Controls.Add(btnAbrir)
@@ -263,21 +266,76 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    Private Function ArchivoIndice() As String
+    Private Function CarpetaIndice() As String
         Dim carpeta As String = txtIndice.Text.Trim()
         If carpeta = "" Then carpeta = CarpetaConfig()
-        Return System.IO.Path.Combine(carpeta, NOMBRE_INDICE)
+        Return carpeta
+    End Function
+
+    ' Convierte una ruta en un nombre de fichero valido.
+    Private Function Sanitizar(s As String) As String
+        Dim r As String = s
+        For Each c As Char In System.IO.Path.GetInvalidFileNameChars()
+            r = r.Replace(c, "_"c)
+        Next
+        r = r.Replace(" ", "_")
+        If r.Length > 80 Then r = r.Substring(0, 80)
+        If r = "" Then r = "raiz"
+        Return r
+    End Function
+
+    ' Fichero de indice para la carpeta a indexar ACTUAL (una por unidad).
+    Private Function ArchivoIndiceActual() As String
+        Return System.IO.Path.Combine(CarpetaIndice(), _
+            "IndiceBuscador_" & Sanitizar(txtRuta.Text.Trim()) & ".txt")
+    End Function
+
+    ' TODOS los ficheros de indice de la carpeta (la busqueda usa todos).
+    Private Function ListarArchivosIndice() As System.Collections.Generic.List(Of String)
+        Dim res As New System.Collections.Generic.List(Of String)
+        Try
+            Dim carpeta As String = CarpetaIndice()
+            If System.IO.Directory.Exists(carpeta) Then
+                For Each f As String In System.IO.Directory.GetFiles(carpeta, "IndiceBuscador*.txt")
+                    res.Add(f)
+                Next
+            End If
+        Catch
+        End Try
+        Return res
+    End Function
+
+    ' Lee la carpeta raiz que se indexo (de la cabecera del fichero).
+    Private Function RaizDeIndice(archivo As String) As String
+        Try
+            Using sr As New System.IO.StreamReader(archivo)
+                Dim primera As String = sr.ReadLine()
+                If primera IsNot Nothing AndAlso primera.StartsWith("#") Then
+                    Dim p() As String = primera.Split(CChar(vbTab))
+                    If p.Length >= 3 Then Return p(2)
+                End If
+            End Using
+        Catch
+        End Try
+        Return System.IO.Path.GetFileNameWithoutExtension(archivo)
     End Function
 
     Private Sub ActualizarInfoIndice()
         Try
-            Dim a As String = ArchivoIndice()
-            If System.IO.File.Exists(a) Then
-                lblIndiceInfo.Text = "Indice del " & _
-                    System.IO.File.GetLastWriteTime(a).ToString("yyyy-MM-dd HH:mm")
-            Else
+            Dim archivos = ListarArchivosIndice()
+            If archivos.Count = 0 Then
                 lblIndiceInfo.Text = "Sin indice. Pulsa 'Indexar ahora'."
+                Return
             End If
+            Dim ultima As Date = Date.MinValue
+            Dim raices As New System.Collections.Generic.List(Of String)
+            For Each a As String In archivos
+                Dim f As Date = System.IO.File.GetLastWriteTime(a)
+                If f > ultima Then ultima = f
+                raices.Add(RaizDeIndice(a))
+            Next
+            lblIndiceInfo.Text = archivos.Count.ToString() & " indice(s): " & _
+                String.Join(", ", raices.ToArray()) & "  (ult. " & ultima.ToString("yyyy-MM-dd HH:mm") & ")"
         Catch
             lblIndiceInfo.Text = ""
         End Try
@@ -287,7 +345,7 @@ Public Class BuscadorFicherosForm
     Private Sub OnShown(sender As Object, e As System.EventArgs)
         If chkAutoUpdate.Checked Then
             Try
-                If System.IO.File.Exists(ArchivoIndice()) Then OnIndexar(Nothing, Nothing)
+                If ListarArchivosIndice().Count > 0 Then OnIndexar(Nothing, Nothing)
             Catch
             End Try
         End If
@@ -363,7 +421,7 @@ Public Class BuscadorFicherosForm
         btnCancelar.Enabled = True
         Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
 
-        Dim archivo As String = ArchivoIndice()
+        Dim archivo As String = ArchivoIndiceActual()
 
         If chkPartNumber.Checked Then
             ' Completo: lee Nº de pieza con Apprentice. Hilo principal (con DoEvents).
@@ -597,27 +655,48 @@ Public Class BuscadorFicherosForm
         Return exts
     End Function
 
-    Private Function CargarIndice(archivo As String) As Boolean
+    ' Firma de los indices (rutas + fechas) para saber si hay que recargar.
+    Private Function FirmaIndices(archivos As System.Collections.Generic.List(Of String)) As String
+        Dim sb As New System.Text.StringBuilder()
+        For Each a As String In archivos
+            sb.Append(a).Append("|")
+            Try
+                sb.Append(System.IO.File.GetLastWriteTime(a).Ticks)
+            Catch
+            End Try
+            sb.Append(";")
+        Next
+        Return sb.ToString()
+    End Function
+
+    ' Carga TODOS los ficheros de indice en memoria (con cache y sin duplicados).
+    Private Function CargarIndices(archivos As System.Collections.Generic.List(Of String)) As Boolean
         Try
-            Dim fecha As Date = System.IO.File.GetLastWriteTime(archivo)
-            If _indice IsNot Nothing AndAlso _indiceArchivo = archivo AndAlso _indiceFecha = fecha Then
-                Return True
-            End If
+            Dim firma As String = FirmaIndices(archivos)
+            If _indice IsNot Nothing AndAlso _indiceFirma = firma Then Return True
+
             Dim lista As New System.Collections.Generic.List(Of String())
-            For Each l As String In System.IO.File.ReadAllLines(archivo)
-                If l = "" OrElse l.StartsWith("#") Then Continue For
-                Dim p() As String = l.Split(CChar(vbTab))
-                If p.Length < 2 Then Continue For
-                Dim ruta As String = p(0)
-                Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(ruta).ToLower()
-                Dim ext As String = System.IO.Path.GetExtension(ruta).ToLower()
-                Dim pnLower As String = ""
-                If p.Length >= 3 Then pnLower = p(2).ToLower()
-                lista.Add(New String() {ruta, nombre, ext, p(1), pnLower})
+            Dim vistos As New System.Collections.Generic.HashSet(Of String)( _
+                System.StringComparer.OrdinalIgnoreCase)
+
+            For Each archivo As String In archivos
+                For Each l As String In System.IO.File.ReadAllLines(archivo)
+                    If l = "" OrElse l.StartsWith("#") Then Continue For
+                    Dim p() As String = l.Split(CChar(vbTab))
+                    If p.Length < 2 Then Continue For
+                    Dim ruta As String = p(0)
+                    If vistos.Contains(ruta) Then Continue For
+                    vistos.Add(ruta)
+                    Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(ruta).ToLower()
+                    Dim ext As String = System.IO.Path.GetExtension(ruta).ToLower()
+                    Dim pnLower As String = ""
+                    If p.Length >= 3 Then pnLower = p(2).ToLower()
+                    lista.Add(New String() {ruta, nombre, ext, p(1), pnLower})
+                Next
             Next
+
             _indice = lista
-            _indiceArchivo = archivo
-            _indiceFecha = fecha
+            _indiceFirma = firma
             Return True
         Catch
             Return False
@@ -633,23 +712,23 @@ Public Class BuscadorFicherosForm
             Return
         End If
 
-        Dim archivo As String = ArchivoIndice()
-        If Not System.IO.File.Exists(archivo) Then
+        Dim archivos = ListarArchivosIndice()
+        If archivos.Count = 0 Then
             Dim resp As System.Windows.Forms.DialogResult = System.Windows.Forms.MessageBox.Show( _
-                "No hay indice en esa carpeta." & vbCrLf & vbCrLf & "¿Indexar ahora?", _
+                "No hay ningun indice en esa carpeta." & vbCrLf & vbCrLf & "¿Indexar ahora?", _
                 "Buscador", System.Windows.Forms.MessageBoxButtons.YesNo, _
                 System.Windows.Forms.MessageBoxIcon.Question)
             If resp = System.Windows.Forms.DialogResult.Yes Then OnIndexar(sender, e)
             Return
         End If
 
-        lblEstado.Text = "Buscando en el indice..."
+        lblEstado.Text = "Buscando en " & archivos.Count.ToString() & " indice(s)..."
         Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
         Me.Refresh()
 
-        If Not CargarIndice(archivo) Then
+        If Not CargarIndices(archivos) Then
             Me.Cursor = System.Windows.Forms.Cursors.Default
-            System.Windows.Forms.MessageBox.Show("No se pudo leer el indice:" & vbCrLf & archivo, _
+            System.Windows.Forms.MessageBox.Show("No se pudieron leer los indices.", _
                 "Buscador", System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Error)
             Return
@@ -710,21 +789,26 @@ Public Class BuscadorFicherosForm
         btnCancelar.Enabled = False
     End Sub
 
-    Private Sub OnAbrir(sender As Object, e As System.EventArgs)
+    Private Function RutaSeleccionada() As String
         If lstResultados.SelectedItems.Count = 0 Then
             System.Windows.Forms.MessageBox.Show("Selecciona un fichero de la lista.", "Buscador", _
                 System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Information)
-            Return
+            Return ""
         End If
-
         Dim ruta As String = lstResultados.SelectedItems(0).Tag.ToString()
         If Not System.IO.File.Exists(ruta) Then
             System.Windows.Forms.MessageBox.Show("El fichero ya no existe (reindexa):" & vbCrLf & ruta, _
-                "Abrir", System.Windows.Forms.MessageBoxButtons.OK, _
+                "Buscador", System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Warning)
-            Return
+            Return ""
         End If
+        Return ruta
+    End Function
+
+    Private Sub OnAbrir(sender As Object, e As System.EventArgs)
+        Dim ruta As String = RutaSeleccionada()
+        If ruta = "" Then Return
         Try
             oApp.Documents.Open(ruta, True)
             Me.Close()
@@ -732,6 +816,19 @@ Public Class BuscadorFicherosForm
             System.Windows.Forms.MessageBox.Show("No se pudo abrir el fichero:" & vbCrLf & ruta & _
                 vbCrLf & vbCrLf & ex.Message, "Error al abrir", _
                 System.Windows.Forms.MessageBoxButtons.OK, _
+                System.Windows.Forms.MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ' Abre el Explorador de Windows con el fichero seleccionado.
+    Private Sub OnAbrirCarpeta(sender As Object, e As System.EventArgs)
+        Dim ruta As String = RutaSeleccionada()
+        If ruta = "" Then Return
+        Try
+            System.Diagnostics.Process.Start("explorer.exe", "/select,""" & ruta & """")
+        Catch ex As System.Exception
+            System.Windows.Forms.MessageBox.Show("No se pudo abrir el Explorador:" & vbCrLf & _
+                ex.Message, "Abrir carpeta", System.Windows.Forms.MessageBoxButtons.OK, _
                 System.Windows.Forms.MessageBoxIcon.Error)
         End Try
     End Sub
