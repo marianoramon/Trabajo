@@ -134,3 +134,5 @@ class AppConfig:
     ipt_bending_copy_folder: str = ""
     timestamp_tolerance_seconds: int = 60
     mappings_file: str = "mappings.csv"
+    # Carpetas de red donde buscar ficheros de Inventor (una por línea).
+    search_folders: list[str] = field(default_factory=list)

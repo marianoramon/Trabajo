@@ -30,6 +30,7 @@ def save_config(config: AppConfig):
             "ipt_bending_copy_folder": config.ipt_bending_copy_folder,
             "timestamp_tolerance_seconds": config.timestamp_tolerance_seconds,
             "mappings_file": config.mappings_file,
+            "search_folders": config.search_folders,
         }, f, indent=2, ensure_ascii=False)
 
 

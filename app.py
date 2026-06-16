@@ -22,7 +22,7 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navegación",
-    ["Verificación", "Configuración", "Mapeo de Códigos"],
+    ["Verificación", "Buscar ficheros", "Configuración", "Mapeo de Códigos"],
     index=0,
 )
 
@@ -39,6 +39,9 @@ st.sidebar.markdown(
 # Renderizar página seleccionada
 if page == "Verificación":
     from ui.pages.verificacion import render
+    render()
+elif page == "Buscar ficheros":
+    from ui.pages.buscar import render
     render()
 elif page == "Configuración":
     from ui.pages.configuracion import render
