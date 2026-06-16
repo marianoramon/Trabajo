@@ -697,6 +697,11 @@ Public Class BuscadorFicherosForm
         Return String.Equals(nombre, "OldVersions", System.StringComparison.OrdinalIgnoreCase)
     End Function
 
+    ' True si la ruta es una copia de seguridad de Inventor (carpeta OldVersions).
+    Private Function EsCopiaSeguridad(ruta As String) As Boolean
+        Return ruta.ToLower().Contains("\oldversions\")
+    End Function
+
     ' Firma de los indices (rutas + fechas) para saber si hay que recargar.
     Private Function FirmaIndices(archivos As System.Collections.Generic.List(Of String)) As String
         Dim sb As New System.Text.StringBuilder()
@@ -782,6 +787,7 @@ Public Class BuscadorFicherosForm
         Dim truncado As Boolean = False
 
         For Each entrada As String() In _indice
+            If EsCopiaSeguridad(entrada(0)) Then Continue For
             If exts.Contains(entrada(2)) Then
                 Dim coincide As Boolean = entrada(1).Contains(cod)
                 If Not coincide AndAlso entrada(4) <> "" Then coincide = entrada(4).Contains(cod)
