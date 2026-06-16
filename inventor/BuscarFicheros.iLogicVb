@@ -47,7 +47,6 @@ Public Class BuscadorFicherosForm
     Private txtIndice As System.Windows.Forms.TextBox
     Private btnExaminarIndice As System.Windows.Forms.Button
     Private chkPartNumber As System.Windows.Forms.CheckBox
-    Private chkAutoUpdate As System.Windows.Forms.CheckBox
     Private btnIndexar As System.Windows.Forms.Button
     Private lblIndiceInfo As System.Windows.Forms.Label
     Private txtCodigo As System.Windows.Forms.TextBox
@@ -135,10 +134,6 @@ Public Class BuscadorFicherosForm
         chkPartNumber.Text = "Indexar tambien Nº de pieza (mas lento)"
         chkPartNumber.Left = 145 : chkPartNumber.Top = 110 : chkPartNumber.Width = 290
         Me.Controls.Add(chkPartNumber)
-        chkAutoUpdate = New System.Windows.Forms.CheckBox()
-        chkAutoUpdate.Text = "Actualizar indice al abrir"
-        chkAutoUpdate.Left = 445 : chkAutoUpdate.Top = 110 : chkAutoUpdate.Width = 230
-        Me.Controls.Add(chkAutoUpdate)
 
         ' --- Fila 5: indexar + info ---
         btnIndexar = Boton("Indexar ahora", 145, 138, 150, 28, _
@@ -217,7 +212,6 @@ Public Class BuscadorFicherosForm
 
         CargarAjustes()
         ActualizarInfoIndice()
-        AddHandler Me.Shown, AddressOf OnShown
     End Sub
 
     ' --- Helpers de creacion de controles ---
@@ -244,7 +238,6 @@ Public Class BuscadorFicherosForm
         Dim ruta As String = RUTA_DEFECTO
         Dim indice As String = CarpetaConfig()
         Dim pn As Boolean = False
-        Dim auto As Boolean = False
         Try
             Dim a As String = ArchivoAjustes()
             If System.IO.File.Exists(a) Then
@@ -252,14 +245,12 @@ Public Class BuscadorFicherosForm
                 If ls.Length >= 1 AndAlso ls(0).Trim() <> "" Then ruta = ls(0).Trim()
                 If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
                 If ls.Length >= 3 Then pn = (ls(2).Trim() = "1")
-                If ls.Length >= 4 Then auto = (ls(3).Trim() = "1")
             End If
         Catch
         End Try
         txtRuta.Text = ruta
         txtIndice.Text = indice
         chkPartNumber.Checked = pn
-        chkAutoUpdate.Checked = auto
     End Sub
 
     Private Sub GuardarAjustes()
@@ -267,8 +258,7 @@ Public Class BuscadorFicherosForm
             System.IO.Directory.CreateDirectory(CarpetaConfig())
             System.IO.File.WriteAllText(ArchivoAjustes(), _
                 txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf & _
-                If(chkPartNumber.Checked, "1", "0") & vbCrLf & _
-                If(chkAutoUpdate.Checked, "1", "0") & vbCrLf)
+                If(chkPartNumber.Checked, "1", "0") & vbCrLf)
         Catch
         End Try
     End Sub
@@ -348,16 +338,7 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    ' --- Eventos de rutas / arranque ---
-    Private Sub OnShown(sender As Object, e As System.EventArgs)
-        If chkAutoUpdate.Checked Then
-            Try
-                If ListarArchivosIndice().Count > 0 Then OnIndexar(Nothing, Nothing)
-            Catch
-            End Try
-        End If
-    End Sub
-
+    ' --- Eventos de rutas ---
     Private Sub OnExaminarRuta(sender As Object, e As System.EventArgs)
         Dim r As String = ElegirCarpeta(txtRuta.Text)
         If r <> "" Then txtRuta.Text = r

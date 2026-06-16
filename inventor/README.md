@@ -33,8 +33,9 @@ En la parte superior de la ventana eliges:
   principal (con progreso y **Cancelar**) porque la API de Inventor no admite
   hilos; la primera vez tarda más. Sin marcar, el indexado es **rápido** (solo
   nombre) y corre en segundo plano.
-- **Actualizar índice al abrir**: al lanzar la herramienta, si ya existe un
-  índice, lo **reindexa automáticamente** (respeta el modo elegido).
+
+> La herramienta **nunca indexa sola**: solo se indexa cuando pulsas
+> **Indexar ahora**. Al abrir la regla únicamente se cargan las rutas guardadas.
 
 **Reindexado incremental:** al reindexar, los ficheros que **no han cambiado**
 (misma fecha) **conservan su Nº de pieza** sin volver a leerlo. Por eso la
@@ -67,7 +68,7 @@ fichero** de índice: `IndiceBuscador_<ruta>.txt` dentro de la carpeta del índi
    - La columna **Ruta** muestra la ubicación completa del fichero.
 
 > El índice es una "foto" del momento en que se creó. Si añades o mueves
-> ficheros, pulsa **Indexar ahora** (o activa *Actualizar al abrir*). Si abres
+> ficheros, pulsa **Indexar ahora**. Si abres
 > un fichero que ya no existe, la regla te avisa de que reindexes.
 
 Las opciones (rutas y casillas) se recuerdan entre sesiones.
