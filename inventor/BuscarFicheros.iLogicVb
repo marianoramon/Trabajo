@@ -110,8 +110,8 @@ Public Class BuscadorFicherosForm
         cboUnidad.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
         cboUnidad.Items.Add("Ruta de red (" & RUTA_RED & ")")
         Try
-            For Each d As System.IO.DriveInfo In System.IO.DriveInfo.GetDrives()
-                cboUnidad.Items.Add(d.Name)
+            For Each unidad As String In System.Environment.GetLogicalDrives()
+                cboUnidad.Items.Add(unidad)
             Next
         Catch
         End Try
