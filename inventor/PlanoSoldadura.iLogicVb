@@ -1,0 +1,635 @@
+Sub Main()
+
+    ' PLANO_SOLDADURA v1.0
+    ' Genera el plano de soldadura del ENSAMBLAJE activo (.iam):
+    '   - Vistas: frontal + superior + lateral + isometrica (escala automatica)
+    '   - Lista de componentes (BOM)
+    '   - Globos numerados en todas las piezas
+    '   - Nota general de soldadura
+    '   - Rellena el cajetin con las iProperties del ensamblaje
+    '   - Guarda el .idw + PDF + DWF JUNTO al .iam
+    '
+    ' Basada en la estructura de PLANOS_PLEGADO.
+
+    Dim invApp As Inventor.Application = ThisApplication
+    Dim tg As TransientGeometry = invApp.TransientGeometry
+
+    ' ===== CONFIGURACION (EDITA ESTAS RUTAS) =====
+    ' Ruta (sin extension) de TU plantilla de soldadura .idw/.dwg.
+    Dim RUTA_PLANTILLA_BASE As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO SOLDADURA V19 -LOGO NUEVO"
+    Dim NOTA_SOLDADURA As String = "NOTA: Todas las soldaduras cordon continuo a doble cara donde sea accesible."
+    Dim CENTRO_TRABAJO As String = "SOLDADURA"
+
+    ' Escalas normalizadas 1:X disponibles, de mayor a menor.
+    Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.1428571429, 0.125, 0.1111111111, 0.1, 0.0833333333, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
+
+    Dim docActivo As Document = invApp.ActiveDocument
+
+    If docActivo Is Nothing Then
+        MessageBox.Show("No hay ningun documento activo.", "Plano de soldadura")
+        Exit Sub
+    End If
+
+    If docActivo.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        MessageBox.Show("Esta regla es para ENSAMBLAJES. Abre el .iam del conjunto soldado.", "Plano de soldadura")
+        Exit Sub
+    End If
+
+    Dim asmDoc As AssemblyDocument = TryCast(docActivo, AssemblyDocument)
+
+    If asmDoc Is Nothing Then
+        MessageBox.Show("No se ha podido leer el ensamblaje activo.", "Plano de soldadura")
+        Exit Sub
+    End If
+
+    If asmDoc.FullFileName = "" Then
+        MessageBox.Show("Guarda primero el ensamblaje antes de generar el plano.", "Plano de soldadura")
+        Exit Sub
+    End If
+
+    Try
+        CrearPlanoSoldadura(invApp, tg, asmDoc, RUTA_PLANTILLA_BASE, NOTA_SOLDADURA, CENTRO_TRABAJO, ESCALAS)
+        MessageBox.Show("Plano de soldadura generado. Revisa la colocacion de globos y la lista de piezas.", "Plano de soldadura")
+    Catch ex As Exception
+        MessageBox.Show("No se ha podido generar el plano de soldadura:" & vbCrLf & vbCrLf & ex.Message, "Plano de soldadura")
+    End Try
+
+End Sub
+
+'---------------------------------------------------------
+' FUNCION PRINCIPAL
+'---------------------------------------------------------
+
+Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
+                        ByVal tg As TransientGeometry, _
+                        ByVal asmDoc As AssemblyDocument, _
+                        ByVal rutaPlantillaBase As String, _
+                        ByVal notaSoldadura As String, _
+                        ByVal centroTrabajo As String, _
+                        ByVal escalas() As Double)
+
+    '---------------------------------------------------------
+    ' LEER iPROPERTIES DEL ENSAMBLAJE
+    '---------------------------------------------------------
+    Dim articulo As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Part Number")
+    Dim descripcion As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Description")
+    Dim proyecto As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Project")
+    Dim disenador As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Designer")
+    Dim material As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Material")
+    Dim revision As String = LeerPropiedad(asmDoc, "Inventor Summary Information", "Revision Number")
+    If revision = "" Then revision = LeerPropiedad(asmDoc, "Summary Information", "Revision Number")
+
+    If articulo = "" Then articulo = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
+    If descripcion = "" Then descripcion = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
+
+    '---------------------------------------------------------
+    ' PLANTILLA
+    '---------------------------------------------------------
+    Dim rutaPlantilla As String = ObtenerRutaPlantilla(rutaPlantillaBase)
+    If rutaPlantilla = "" Then
+        Throw New Exception("No se ha encontrado la plantilla de soldadura. Revisa la ruta en RUTA_PLANTILLA_BASE (anadiendo .idw/.dwg).")
+    End If
+
+    '---------------------------------------------------------
+    ' CARPETA DE SALIDA = MISMA CARPETA DEL ENSAMBLAJE
+    '---------------------------------------------------------
+    Dim carpetaSalida As String = System.IO.Path.GetDirectoryName(asmDoc.FullFileName)
+
+    '---------------------------------------------------------
+    ' CREAR PLANO
+    '---------------------------------------------------------
+    Dim drawingDoc As DrawingDocument = TryCast(invApp.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, rutaPlantilla, True), DrawingDocument)
+    If drawingDoc Is Nothing Then
+        Throw New Exception("No se ha podido crear el plano desde la plantilla.")
+    End If
+
+    Dim sheet As Sheet = drawingDoc.ActiveSheet
+
+    ' Si el conjunto supera 800 mm, usar A3 apaisado.
+    Dim mayorDimMM As Double = ObtenerMayorDimensionModeloMM(asmDoc)
+    If mayorDimMM > 800 Then
+        AplicarA3Apaisado(sheet)
+    End If
+
+    Dim ancho As Double = sheet.Width
+    Dim alto As Double = sheet.Height
+
+    '---------------------------------------------------------
+    ' ESCALA
+    '---------------------------------------------------------
+    Dim escala As Double = CalcularEscalaEnsamblaje(asmDoc, sheet, escalas)
+    Dim escalaTexto As String = FormatearEscala(escala)
+
+    '---------------------------------------------------------
+    ' VISTAS
+    '---------------------------------------------------------
+    ' Vista principal (frontal) arriba-izquierda.
+    Dim pPrincipal As Point2d = tg.CreatePoint2d(ancho * 0.30, alto * 0.66)
+
+    Dim vPrincipal As DrawingView = sheet.DrawingViews.AddBaseView( _
+        asmDoc, pPrincipal, escala, _
+        ViewOrientationTypeEnum.kFrontViewOrientation, _
+        DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+        "", Nothing, Nothing)
+
+    vPrincipal.Name = "PRINCIPAL"
+    QuitarEtiquetaVista(vPrincipal)
+    ActivarAristasTangentes(vPrincipal)
+
+    ' Vista superior (proyectada debajo).
+    Try
+        Dim pSup As Point2d = tg.CreatePoint2d(vPrincipal.Position.X, vPrincipal.Position.Y - (vPrincipal.Height / 2.0) - 4.0)
+        Dim vSup As DrawingView = sheet.DrawingViews.AddProjectedView(vPrincipal, pSup, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
+        vSup.Name = "SUPERIOR"
+        QuitarEtiquetaVista(vSup)
+        ActivarAristasTangentes(vSup)
+    Catch
+    End Try
+
+    ' Vista lateral (proyectada a la derecha).
+    Try
+        Dim pLat As Point2d = tg.CreatePoint2d(vPrincipal.Position.X + (vPrincipal.Width / 2.0) + 5.0, vPrincipal.Position.Y)
+        Dim vLat As DrawingView = sheet.DrawingViews.AddProjectedView(vPrincipal, pLat, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
+        vLat.Name = "LATERAL"
+        QuitarEtiquetaVista(vLat)
+        ActivarAristasTangentes(vLat)
+    Catch
+    End Try
+
+    ' Isometrica (zona inferior derecha).
+    Try
+        Dim pIso As Point2d = tg.CreatePoint2d(ancho * 0.72, alto * 0.32)
+        Dim vIso As DrawingView = sheet.DrawingViews.AddBaseView( _
+            asmDoc, pIso, escala, _
+            ViewOrientationTypeEnum.kIsoTopRightViewOrientation, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", Nothing, Nothing)
+        vIso.Name = "ISOMETRICA"
+        QuitarEtiquetaVista(vIso)
+        ActivarAristasTangentes(vIso)
+    Catch
+    End Try
+
+    drawingDoc.Update2(True)
+
+    '---------------------------------------------------------
+    ' LISTA DE COMPONENTES (BOM) - arriba derecha
+    '---------------------------------------------------------
+    Try
+        Dim pBOM As Point2d = tg.CreatePoint2d(ancho * 0.72, alto * 0.95)
+        Dim oPL As PartsList = sheet.PartsLists.Add(vPrincipal, pBOM)
+    Catch
+        ' Si falla la BOM (p.ej. plantilla sin estilo de lista), no se bloquea.
+    End Try
+
+    '---------------------------------------------------------
+    ' GLOBOS NUMERADOS sobre la vista principal
+    '---------------------------------------------------------
+    Try
+        PonerGlobosAutomaticos(invApp, tg, sheet, vPrincipal, asmDoc)
+    Catch
+    End Try
+
+    '---------------------------------------------------------
+    ' NOTA DE SOLDADURA (arriba izquierda)
+    '---------------------------------------------------------
+    Try
+        Dim pNota As Point2d = tg.CreatePoint2d(1.5, alto - 0.6)
+        sheet.DrawingNotes.GeneralNotes.AddFitted(pNota, notaSoldadura)
+    Catch
+    End Try
+
+    '---------------------------------------------------------
+    ' CAJETIN / PROPIEDADES
+    '---------------------------------------------------------
+    EscribirPropiedadUsuario(drawingDoc, "ARTICULO", articulo)
+    EscribirPropiedadUsuario(drawingDoc, "ARTÍCULO", articulo)
+    EscribirPropiedadUsuario(drawingDoc, "DESCRIPCION", descripcion)
+    EscribirPropiedadUsuario(drawingDoc, "DESCRIPCIÓN", descripcion)
+    EscribirPropiedadUsuario(drawingDoc, "ESCALA", escalaTexto)
+    EscribirPropiedadUsuario(drawingDoc, "CENTRO", centroTrabajo)
+    EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
+    EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
+    EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
+
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Part Number", articulo)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Description", descripcion)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Project", proyecto)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Designer", disenador)
+    EscribirPropiedad(drawingDoc, "Inventor Summary Information", "Revision Number", revision)
+    EscribirPropiedad(drawingDoc, "Summary Information", "Revision Number", revision)
+
+    RellenarPromptsCajetin(sheet, articulo, descripcion, centroTrabajo, escalaTexto)
+
+    drawingDoc.Update2(True)
+
+    '---------------------------------------------------------
+    ' GUARDAR Y EXPORTAR (junto al .iam)
+    '---------------------------------------------------------
+    Dim nombreBase As String = LimpiarNombreArchivo(articulo)
+    If nombreBase.Length > 130 Then nombreBase = nombreBase.Substring(0, 130)
+
+    Dim extensionPlano As String = System.IO.Path.GetExtension(rutaPlantilla).ToLower()
+    If extensionPlano <> ".idw" And extensionPlano <> ".dwg" Then extensionPlano = ".idw"
+
+    Dim rutaPlano As String = System.IO.Path.Combine(carpetaSalida, nombreBase & extensionPlano)
+    Dim rutaPDF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".pdf")
+    Dim rutaDWF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".dwf")
+
+    drawingDoc.SaveAs(rutaPlano, False)
+    ExportarPDF(invApp, drawingDoc, rutaPDF)
+    ExportarDWF(invApp, drawingDoc, rutaDWF)
+
+    drawingDoc.Activate()
+
+End Sub
+
+'---------------------------------------------------------
+' GLOBOS NUMERADOS AUTOMATICOS
+'---------------------------------------------------------
+
+Sub PonerGlobosAutomaticos(ByVal invApp As Inventor.Application, _
+                           ByVal tg As TransientGeometry, _
+                           ByVal sheet As Sheet, _
+                           ByVal vista As DrawingView, _
+                           ByVal asmDoc As AssemblyDocument)
+    Try
+        If vista Is Nothing Then Exit Sub
+
+        Dim oAsmDef As AssemblyComponentDefinition = asmDoc.ComponentDefinition
+        Dim occs As ComponentOccurrences = oAsmDef.Occurrences
+
+        Dim total As Integer = occs.Count
+        If total <= 0 Then Exit Sub
+
+        Dim topY As Double = vista.Position.Y + (vista.Height / 2.0) + 1.6
+        Dim leftX As Double = vista.Position.X - (vista.Width / 2.0)
+        Dim anchoVista As Double = vista.Width
+        Dim idx As Integer = 0
+
+        For Each occ As ComponentOccurrence In occs
+            Try
+                ' Curvas de esta ocurrencia dentro de la vista.
+                Dim curvas As DrawingCurvesEnumerator = vista.DrawingCurves(occ)
+                If curvas Is Nothing Then Continue For
+                If curvas.Count = 0 Then Continue For
+
+                Dim dc As DrawingCurve = curvas.Item(1)
+                Dim gi As GeometryIntent = sheet.CreateGeometryIntent(dc, PointIntentEnum.kMidPointIntent)
+
+                ' Posicion del globo: repartidos sobre la vista, en dos filas alternas.
+                Dim fraccion As Double = (idx + 1) / (total + 1.0)
+                Dim bx As Double = leftX + (anchoVista * fraccion)
+                Dim by As Double = topY + ((idx Mod 2) * 1.2)
+
+                Dim leader As ObjectCollection = invApp.TransientObjects.CreateObjectCollection()
+                leader.Add(tg.CreatePoint2d(bx, by))
+                leader.Add(gi)
+
+                sheet.Balloons.Add(leader)
+                idx += 1
+            Catch
+                ' Si una pieza no se puede globalizar, seguimos con las demas.
+            End Try
+        Next
+    Catch
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' ESCALA PARA ENSAMBLAJE
+'---------------------------------------------------------
+
+Function CalcularEscalaEnsamblaje(ByVal asmDoc As AssemblyDocument, _
+                                  ByVal sheet As Sheet, _
+                                  ByVal escalas() As Double) As Double
+    Try
+        Dim anchoHoja As Double = sheet.Width
+        Dim altoHoja As Double = sheet.Height
+
+        Dim yCajetin As Double = ObtenerYSuperiorCajetin(sheet)
+        Dim margenX As Double = 1.5
+        Dim margenSup As Double = 1.0
+
+        Dim anchoUtil As Double = anchoHoja - (2 * margenX)
+        Dim altoUtil As Double = altoHoja - yCajetin - margenSup
+        If anchoUtil <= 5 Then anchoUtil = anchoHoja * 0.9
+        If altoUtil <= 5 Then altoUtil = altoHoja * 0.65
+
+        Dim mayor As Double = 1
+        Dim media As Double = 1
+        Dim menor As Double = 1
+        ObtenerDimensionesModeloOrdenadas(asmDoc, mayor, media, menor)
+
+        ' La vista principal debe entrar en aprox. 60% x 50% del area util,
+        ' dejando sitio para superior, lateral, isometrica y BOM.
+        Dim zonaW As Double = anchoUtil * 0.60
+        Dim zonaH As Double = altoUtil * 0.50
+
+        For Each s As Double In escalas
+            If CabeRectanguloEnZona(mayor, media, zonaW, zonaH, s, True) Then Return s
+        Next
+
+        Return escalas(escalas.Length - 1)
+    Catch
+        Return 0.1
+    End Try
+End Function
+
+Function ObtenerMayorDimensionModeloMM(ByVal doc As Document) As Double
+    Try
+        Dim box As Box = doc.ComponentDefinition.RangeBox
+        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X) * 10.0
+        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y) * 10.0
+        Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z) * 10.0
+        Return Math.Max(dx, Math.Max(dy, dz))
+    Catch
+        Return 0
+    End Try
+End Function
+
+Sub ObtenerDimensionesModeloOrdenadas(ByVal doc As Document, _
+                                      ByRef mayor As Double, _
+                                      ByRef media As Double, _
+                                      ByRef menor As Double)
+    mayor = 1
+    media = 1
+    menor = 1
+    Try
+        Dim box As Box = doc.ComponentDefinition.RangeBox
+        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X)
+        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y)
+        Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z)
+
+        mayor = Math.Max(dx, Math.Max(dy, dz))
+        menor = Math.Min(dx, Math.Min(dy, dz))
+        media = dx + dy + dz - mayor - menor
+
+        If mayor <= 0 Then mayor = 1
+        If media <= 0 Then media = 1
+        If menor <= 0 Then menor = 1
+    Catch
+        mayor = 1
+        media = 1
+        menor = 1
+    End Try
+End Sub
+
+Function CabeRectanguloEnZona(ByVal w As Double, ByVal h As Double, _
+                              ByVal zonaW As Double, ByVal zonaH As Double, _
+                              ByVal escala As Double, ByVal permitirGiro As Boolean) As Boolean
+    Try
+        If w <= 0 Or h <= 0 Or zonaW <= 0 Or zonaH <= 0 Or escala <= 0 Then Return False
+        Dim margen As Double = 0.9
+        Dim zW As Double = zonaW * margen
+        Dim zH As Double = zonaH * margen
+        If (w * escala <= zW) AndAlso (h * escala <= zH) Then Return True
+        If permitirGiro Then
+            If (h * escala <= zW) AndAlso (w * escala <= zH) Then Return True
+        End If
+        Return False
+    Catch
+        Return False
+    End Try
+End Function
+
+Function ObtenerYSuperiorCajetin(ByVal sheet As Sheet) As Double
+    Try
+        If sheet IsNot Nothing AndAlso sheet.TitleBlock IsNot Nothing Then
+            Return sheet.TitleBlock.RangeBox.MaxPoint.Y
+        End If
+    Catch
+    End Try
+    Try
+        Return sheet.Height * 0.18
+    Catch
+        Return 5
+    End Try
+End Function
+
+'---------------------------------------------------------
+' FORMATO DE HOJA Y PLANTILLA
+'---------------------------------------------------------
+
+Function ObtenerRutaPlantilla(ByVal rutaBase As String) As String
+    If System.IO.File.Exists(rutaBase) Then Return rutaBase
+    If System.IO.File.Exists(rutaBase & ".idw") Then Return rutaBase & ".idw"
+    If System.IO.File.Exists(rutaBase & ".dwg") Then Return rutaBase & ".dwg"
+    Return ""
+End Function
+
+Sub AplicarA3Apaisado(ByVal sheet As Sheet)
+    Try
+        sheet.ChangeSize(DrawingSheetSizeEnum.kA3DrawingSheetSize, True)
+    Catch
+        Try
+            sheet.Size = DrawingSheetSizeEnum.kA3DrawingSheetSize
+        Catch
+        End Try
+    End Try
+    Try
+        sheet.Orientation = PageOrientationTypeEnum.kLandscapePageOrientation
+    Catch
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' VISTAS: ETIQUETAS Y ARISTAS
+'---------------------------------------------------------
+
+Sub QuitarEtiquetaVista(ByVal v As DrawingView)
+    Try
+        v.ShowLabel = False
+    Catch
+    End Try
+End Sub
+
+Sub ActivarAristasTangentes(ByVal v As DrawingView)
+    Try
+        v.DisplayTangentEdges = True
+    Catch
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' CAJETIN (PROMPTS)
+'---------------------------------------------------------
+
+Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
+                           ByVal articulo As String, _
+                           ByVal descripcion As String, _
+                           ByVal centro As String, _
+                           ByVal escala As String)
+    Try
+        If sheet Is Nothing Then Exit Sub
+        If sheet.TitleBlock Is Nothing Then Exit Sub
+
+        Dim tb As TitleBlock = sheet.TitleBlock
+        Dim def As TitleBlockDefinition = tb.Definition
+        If def Is Nothing Then Exit Sub
+
+        For Each txt As Inventor.TextBox In def.Sketch.TextBoxes
+            Try
+                Dim t As String = ""
+                Try
+                    t = txt.Text
+                Catch
+                    t = ""
+                End Try
+                If t = "" Then
+                    Try
+                        t = txt.FormattedText
+                    Catch
+                        t = ""
+                    End Try
+                End If
+
+                Dim tu As String = t.ToUpper()
+
+                If tu.Contains("ARTICULO") Or tu.Contains("ARTÍCULO") Or _
+                   tu.Contains("Nº DE PIEZA") Or tu.Contains("NUMERO DE PIEZA") Or _
+                   tu.Contains("NÚMERO DE PIEZA") Then
+                    Try
+                        tb.SetPromptResultText(txt, articulo)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("DESCRIPCION") Or tu.Contains("DESCRIPCIÓN") Then
+                    Try
+                        tb.SetPromptResultText(txt, descripcion)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("CENTRO") Then
+                    Try
+                        tb.SetPromptResultText(txt, centro)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("ESCALA") Then
+                    Try
+                        tb.SetPromptResultText(txt, escala)
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' iPROPERTIES
+'---------------------------------------------------------
+
+Function LeerPropiedad(ByVal doc As Document, ByVal setName As String, ByVal propName As String) As String
+    Try
+        Dim ps As PropertySet = doc.PropertySets.Item(setName)
+        Dim p As Inventor.Property = ps.Item(propName)
+        If p Is Nothing Then Return ""
+        If p.Value Is Nothing Then Return ""
+        Return CStr(p.Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirPropiedad(ByVal doc As Document, ByVal setName As String, ByVal propName As String, ByVal value As String)
+    Try
+        Dim ps As PropertySet = doc.PropertySets.Item(setName)
+        Try
+            Dim p As Inventor.Property = ps.Item(propName)
+            p.Value = value
+        Catch
+        End Try
+    Catch
+    End Try
+End Sub
+
+Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, ByVal value As String)
+    Try
+        Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            Dim p As Inventor.Property = ps.Item(propName)
+            p.Value = value
+        Catch
+            ps.Add(value, propName)
+        End Try
+    Catch
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' UTILIDADES
+'---------------------------------------------------------
+
+Function FormatearEscala(ByVal escala As Double) As String
+    Try
+        If escala <= 0 Then Return ""
+        Dim divisor As Double = 1 / escala
+        Dim divisorEntero As Integer = CInt(Math.Round(divisor, 0))
+        If divisorEntero < 1 Then divisorEntero = 1
+        Return "1:" & divisorEntero.ToString()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function LimpiarNombreArchivo(ByVal nombre As String) As String
+    Dim invalidos() As Char = System.IO.Path.GetInvalidFileNameChars()
+    For Each c As Char In invalidos
+        nombre = nombre.Replace(c, "_"c)
+    Next
+    nombre = nombre.Replace("  ", " ").Trim()
+    If nombre = "" Then nombre = "PLANO_SOLDADURA"
+    Return nombre
+End Function
+
+'---------------------------------------------------------
+' EXPORTACION PDF / DWF
+'---------------------------------------------------------
+
+Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaPDF As String)
+    Try
+        Dim pdfAddIn As TranslatorAddIn = invApp.ApplicationAddIns.ItemById("{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}")
+        Dim context As TranslationContext = invApp.TransientObjects.CreateTranslationContext()
+        context.Type = IOMechanismEnum.kFileBrowseIOMechanism
+
+        Dim options As NameValueMap = invApp.TransientObjects.CreateNameValueMap()
+        If pdfAddIn.HasSaveCopyAsOptions(drawingDoc, context, options) Then
+            options.Value("All_Color_AS_Black") = 0
+            options.Value("Remove_Line_Weights") = 0
+            options.Value("Vector_Resolution") = 400
+            options.Value("Sheet_Range") = PrintRangeEnum.kPrintAllSheets
+        End If
+
+        Dim data As DataMedium = invApp.TransientObjects.CreateDataMedium()
+        data.FileName = rutaPDF
+        pdfAddIn.SaveCopyAs(drawingDoc, context, options, data)
+    Catch ex As Exception
+        ' No bloqueamos si falla el PDF.
+    End Try
+End Sub
+
+Sub ExportarDWF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaDWF As String)
+    Try
+        Dim dwfAddIn As TranslatorAddIn = invApp.ApplicationAddIns.ItemById("{0AC6FD95-2F4D-42CE-8BE0-8AEA580399E4}")
+        Dim context As TranslationContext = invApp.TransientObjects.CreateTranslationContext()
+        context.Type = IOMechanismEnum.kFileBrowseIOMechanism
+
+        Dim options As NameValueMap = invApp.TransientObjects.CreateNameValueMap()
+        If dwfAddIn.HasSaveCopyAsOptions(drawingDoc, context, options) Then
+            options.Value("Launch_Viewer") = 0
+            options.Value("Publish_All_Sheets") = 1
+        End If
+
+        Dim data As DataMedium = invApp.TransientObjects.CreateDataMedium()
+        data.FileName = rutaDWF
+        dwfAddIn.SaveCopyAs(drawingDoc, context, options, data)
+    Catch
+    End Try
+End Sub
