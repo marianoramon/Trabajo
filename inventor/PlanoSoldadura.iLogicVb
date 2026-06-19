@@ -20,6 +20,24 @@ Sub Main()
     Dim NOTA_SOLDADURA As String = "NOTA: Todas las soldaduras cordon continuo a doble cara donde sea accesible."
     Dim CENTRO_TRABAJO As String = "SOLDADURA"
 
+    ' Secuencia de soldadura (texto libre; aparece arriba del cajetin).
+    ' Edita los pasos para adaptarlos a tu conjunto.
+    Dim SECUENCIA_SOLDADURA As String = _
+        "SECUENCIA DE SOLDADURA:" & vbCrLf & _
+        "1. Limpiar y desengrasas todas las superficies a soldar." & vbCrLf & _
+        "2. Verificar la correcta posicion de todas las piezas." & vbCrLf & _
+        "3. Puntear las uniones principales en sus extremos." & vbCrLf & _
+        "4. Verificar cotas generales del conjunto antes de soldar." & vbCrLf & _
+        "5. Soldar juntas simetricamente para minimizar la deformacion." & vbCrLf & _
+        "6. Controlar escuadria y paralelismo durante la soldadura." & vbCrLf & _
+        "7. Soldar el resto de juntas segun plano." & vbCrLf & _
+        "8. Golpear y limpiar escoria entre pasadas (si proceso lo requiere)." & vbCrLf & _
+        "9. Inspeccion visual de todas las uniones soldadas." & vbCrLf & _
+        "10. Controlar dimensiones y tolerancias finales." & vbCrLf & _
+        "11. Amolar y reparar defectos si procede." & vbCrLf & _
+        "12. Granallado / decapado segun especificacion." & vbCrLf & _
+        "13. Pintura / proteccion anticorrosion segun especificacion."
+
     ' Escalas normalizadas 1:X disponibles, de mayor a menor.
     Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.1428571429, 0.125, 0.1111111111, 0.1, 0.0833333333, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
 
@@ -48,7 +66,7 @@ Sub Main()
     End If
 
     Try
-        CrearPlanoSoldadura(invApp, tg, asmDoc, RUTA_PLANTILLA_BASE, NOTA_SOLDADURA, CENTRO_TRABAJO, ESCALAS)
+        CrearPlanoSoldadura(invApp, tg, asmDoc, RUTA_PLANTILLA_BASE, NOTA_SOLDADURA, SECUENCIA_SOLDADURA, CENTRO_TRABAJO, ESCALAS)
         MessageBox.Show("Plano de soldadura generado. Revisa la colocacion de globos y la lista de piezas.", "Plano de soldadura")
     Catch ex As Exception
         MessageBox.Show("No se ha podido generar el plano de soldadura:" & vbCrLf & vbCrLf & ex.Message, "Plano de soldadura")
@@ -65,6 +83,7 @@ Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
                         ByVal asmDoc As AssemblyDocument, _
                         ByVal rutaPlantillaBase As String, _
                         ByVal notaSoldadura As String, _
+                        ByVal secuenciaSoldadura As String, _
                         ByVal centroTrabajo As String, _
                         ByVal escalas() As Double)
 
@@ -191,11 +210,19 @@ Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
     End Try
 
     '---------------------------------------------------------
-    ' NOTA DE SOLDADURA (arriba izquierda)
+    ' NOTA DE SOLDADURA (esquina superior izquierda)
     '---------------------------------------------------------
     Try
-        Dim pNota As Point2d = tg.CreatePoint2d(1.5, alto - 0.6)
+        Dim pNota As Point2d = tg.CreatePoint2d(1.5, alto - 0.8)
         sheet.DrawingNotes.GeneralNotes.AddFitted(pNota, notaSoldadura)
+    Catch
+    End Try
+
+    '---------------------------------------------------------
+    ' SECUENCIA DE SOLDADURA (esquina inferior izquierda, sobre cajetin)
+    '---------------------------------------------------------
+    Try
+        PonerSecuenciaSoldadura(sheet, tg, secuenciaSoldadura)
     Catch
     End Try
 
@@ -246,6 +273,8 @@ End Sub
 
 '---------------------------------------------------------
 ' GLOBOS NUMERADOS AUTOMATICOS
+' Los globos se colocan en filas centradas sobre la vista principal,
+' con separacion fija para evitar solapamientos.
 '---------------------------------------------------------
 
 Sub PonerGlobosAutomaticos(ByVal invApp As Inventor.Application, _
@@ -258,18 +287,33 @@ Sub PonerGlobosAutomaticos(ByVal invApp As Inventor.Application, _
 
         Dim oAsmDef As AssemblyComponentDefinition = asmDoc.ComponentDefinition
         Dim occs As ComponentOccurrences = oAsmDef.Occurrences
+        If occs.Count <= 0 Then Exit Sub
 
-        Dim total As Integer = occs.Count
-        If total <= 0 Then Exit Sub
+        ' Parametros de layout.
+        Dim ESPACIO As Double = 1.8      ' separacion entre centros de globo (cm)
+        Dim MAX_POR_FILA As Integer = 10 ' maximo de globos por fila
+        Dim GAP_VISTA As Double = 2.5    ' separacion entre el borde superior de la vista y la primera fila
 
-        Dim topY As Double = vista.Position.Y + (vista.Height / 2.0) + 1.6
-        Dim leftX As Double = vista.Position.X - (vista.Width / 2.0)
-        Dim anchoVista As Double = vista.Width
-        Dim idx As Integer = 0
+        Dim topViewEdge As Double = vista.Position.Y + (vista.Height / 2.0) + GAP_VISTA
 
+        ' Primera pasada: contar ocurrencias con curvas visibles en la vista.
+        Dim visibleCount As Integer = 0
         For Each occ As ComponentOccurrence In occs
             Try
-                ' Curvas de esta ocurrencia dentro de la vista.
+                Dim curvas As DrawingCurvesEnumerator = vista.DrawingCurves(occ)
+                If curvas IsNot Nothing AndAlso curvas.Count > 0 Then
+                    visibleCount += 1
+                End If
+            Catch
+            End Try
+        Next
+
+        If visibleCount = 0 Then Exit Sub
+
+        ' Segunda pasada: colocar globos.
+        Dim idx As Integer = 0
+        For Each occ As ComponentOccurrence In occs
+            Try
                 Dim curvas As DrawingCurvesEnumerator = vista.DrawingCurves(occ)
                 If curvas Is Nothing Then Continue For
                 If curvas.Count = 0 Then Continue For
@@ -277,10 +321,15 @@ Sub PonerGlobosAutomaticos(ByVal invApp As Inventor.Application, _
                 Dim dc As DrawingCurve = curvas.Item(1)
                 Dim gi As GeometryIntent = sheet.CreateGeometryIntent(dc, PointIntentEnum.kMidPointIntent)
 
-                ' Posicion del globo: repartidos sobre la vista, en dos filas alternas.
-                Dim fraccion As Double = (idx + 1) / (total + 1.0)
-                Dim bx As Double = leftX + (anchoVista * fraccion)
-                Dim by As Double = topY + ((idx Mod 2) * 1.2)
+                ' Calcular posicion en la cuadricula de filas.
+                Dim fila As Integer = idx \ MAX_POR_FILA
+                Dim col As Integer = idx Mod MAX_POR_FILA
+                Dim countEnFila As Integer = Math.Min(MAX_POR_FILA, visibleCount - fila * MAX_POR_FILA)
+
+                ' Centrar cada fila sobre la vista principal.
+                Dim startX As Double = vista.Position.X - ((countEnFila - 1) * ESPACIO / 2.0)
+                Dim bx As Double = startX + (col * ESPACIO)
+                Dim by As Double = topViewEdge + (fila * ESPACIO)
 
                 Dim leader As ObjectCollection = invApp.TransientObjects.CreateObjectCollection()
                 leader.Add(tg.CreatePoint2d(bx, by))
@@ -289,7 +338,7 @@ Sub PonerGlobosAutomaticos(ByVal invApp As Inventor.Application, _
                 sheet.Balloons.Add(leader)
                 idx += 1
             Catch
-                ' Si una pieza no se puede globalizar, seguimos con las demas.
+                ' Si una pieza no se puede globalizar, continuamos con las demas.
             End Try
         Next
     Catch
@@ -588,6 +637,23 @@ Function LimpiarNombreArchivo(ByVal nombre As String) As String
     If nombre = "" Then nombre = "PLANO_SOLDADURA"
     Return nombre
 End Function
+
+'---------------------------------------------------------
+' SECUENCIA DE SOLDADURA (nota de texto en esquina inferior izquierda)
+'---------------------------------------------------------
+
+Sub PonerSecuenciaSoldadura(ByVal sheet As Sheet, _
+                            ByVal tg As TransientGeometry, _
+                            ByVal secuencia As String)
+    Try
+        If secuencia = "" Then Exit Sub
+        ' Colocar justo encima del cajetin, esquina izquierda.
+        Dim yBase As Double = ObtenerYSuperiorCajetin(sheet) + 0.5
+        Dim pSeq As Point2d = tg.CreatePoint2d(1.5, yBase)
+        sheet.DrawingNotes.GeneralNotes.AddFitted(pSeq, secuencia)
+    Catch
+    End Try
+End Sub
 
 '---------------------------------------------------------
 ' EXPORTACION PDF / DWF
