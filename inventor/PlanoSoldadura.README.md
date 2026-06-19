@@ -14,7 +14,8 @@ Con un ensamblaje `.iam` abierto y guardado, al ejecutar la regla:
    lateral + isométrica.
 4. Inserta la **lista de componentes (BOM)** arriba a la derecha.
 5. Pone **globos numerados** en las piezas del conjunto (ligados a la BOM),
-   en filas centradas sobre la vista principal (sin solapamientos).
+   sobre la **vista isométrica**, en filas centradas (sin solapamientos). Si no
+   se pudiera crear la isométrica, los coloca sobre la vista principal.
 6. Añade la **nota de soldadura** (esquina superior izquierda).
 7. Añade la **secuencia de soldadura** (13 pasos, esquina inferior izquierda
    sobre el cajetín). Edita `SECUENCIA_SOLDADURA` para personalizar los pasos.
@@ -59,9 +60,9 @@ ejecuta la regla.
   del conjunto (mover globos, **vistas de sección** B-B/C-C…, **vistas de
   detalle** ampliadas) se añaden **a mano** sobre el plano generado, ya que
   requieren conocer la geometría concreta del modelo.
-- Los **globos** se reparten en filas centradas sobre la vista principal con
-  separación fija de 1,8 cm entre centros. Si el conjunto tiene muchas piezas
-  puede que tengas que reposicionar alguno manualmente.
+- Los **globos** se reparten en filas centradas sobre la **vista isométrica**
+  con separación fija de 1,8 cm entre centros. Si el conjunto tiene muchas
+  piezas puede que tengas que reposicionar alguno manualmente.
 - La **BOM** usa el estilo de lista de la plantilla. Si tu plantilla no tiene
   estilo de lista, la tabla puede salir con formato por defecto.
 - Cada bloque va protegido con `Try`, así que aunque falle una parte (p. ej.

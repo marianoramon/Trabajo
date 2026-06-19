@@ -175,10 +175,11 @@ Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
     Catch
     End Try
 
-    ' Isometrica (zona inferior derecha).
+    ' Isometrica (zona inferior derecha). En esta vista van los globos.
+    Dim vIso As DrawingView = Nothing
     Try
         Dim pIso As Point2d = tg.CreatePoint2d(ancho * 0.72, alto * 0.32)
-        Dim vIso As DrawingView = sheet.DrawingViews.AddBaseView( _
+        vIso = sheet.DrawingViews.AddBaseView( _
             asmDoc, pIso, escala, _
             ViewOrientationTypeEnum.kIsoTopRightViewOrientation, _
             DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
@@ -202,10 +203,13 @@ Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
     End Try
 
     '---------------------------------------------------------
-    ' GLOBOS NUMERADOS sobre la vista principal
+    ' GLOBOS NUMERADOS sobre la vista ISOMETRICA
     '---------------------------------------------------------
     Try
-        PonerGlobosAutomaticos(invApp, tg, sheet, vPrincipal, asmDoc)
+        Dim vGlobos As DrawingView = vIso
+        ' Si la isometrica no se pudo crear, usar la principal como respaldo.
+        If vGlobos Is Nothing Then vGlobos = vPrincipal
+        PonerGlobosAutomaticos(invApp, tg, sheet, vGlobos, asmDoc)
     Catch
     End Try
 
