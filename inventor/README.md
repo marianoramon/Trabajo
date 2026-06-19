@@ -32,18 +32,29 @@ En la parte superior de la ventana eliges:
   aunque esté en el Nº de pieza y no en el nombre. La primera vez tarda más.
   Sin marcar, el indexado es **rápido** (solo nombre).
 
-> **La indexación va siempre en segundo plano**: tras pulsar **Indexar ahora**
-> puedes **cerrar la ventana y seguir trabajando** en Inventor con normalidad;
+> **La indexación va siempre en segundo plano**: tras pulsar **Indexar todo** o
+> **Actualizar** puedes **cerrar la ventana y seguir trabajando** en Inventor;
 > el índice se sigue creando solo y queda guardado al terminar. Vuelve a abrir
 > la herramienta cuando quieras buscar.
 
 > La herramienta **nunca indexa sola**: solo se indexa cuando pulsas
-> **Indexar ahora**. Al abrir la regla únicamente se cargan las rutas guardadas.
+> **Indexar todo** o **Actualizar**. Al abrir la regla únicamente se cargan las
+> rutas guardadas.
 
-**Reindexado incremental:** al reindexar, los ficheros que **no han cambiado**
-(misma fecha) **conservan su Nº de pieza** sin volver a leerlo. Por eso la
-primera indexación completa tarda, pero las siguientes son rápidas (solo se
-leen los ficheros nuevos o modificados).
+### Indexar todo vs. Actualizar
+
+Hay **dos botones**:
+
+- **Indexar todo**: reconstruye el índice **desde cero**. Relee todos los
+  ficheros (y todos los Nº de pieza si la casilla está marcada). Úsalo la
+  primera vez o cuando quieras forzar un refresco completo.
+- **Actualizar**: indexado **incremental**. Solo procesa los ficheros
+  **nuevos o modificados** (compara la fecha); los que **no han cambiado**
+  conservan su entrada y su **Nº de pieza** sin volver a leerlos. Es mucho más
+  rápido. Los ficheros borrados dejan de aparecer en el índice.
+
+Si pulsas **Actualizar** y aún no existe el índice de esa carpeta, te avisa y
+hace un indexado completo (equivale a "Indexar todo").
 
 ### Varias unidades de red (varios índices)
 
@@ -51,7 +62,7 @@ Puedes indexar **varias unidades/carpetas de red**, cada una en su **propio
 fichero** de índice: `IndiceBuscador_<ruta>.txt` dentro de la carpeta del índice.
 
 - Para añadir una unidad: pon su ruta en **Carpeta a indexar** (o elígela en
-  **Unidad**) y pulsa **Indexar ahora**. Se crea/actualiza su índice.
+  **Unidad**) y pulsa **Indexar todo**. Se crea su índice.
 - Repite con otra unidad → se crea otro fichero de índice.
 - La **búsqueda usa TODOS los índices** de la carpeta a la vez (combina los
   resultados y elimina duplicados). El recuadro de info muestra cuántos índices
@@ -59,8 +70,9 @@ fichero** de índice: `IndiceBuscador_<ruta>.txt` dentro de la carpeta del índi
 
 ### Flujo de uso
 
-1. **Indexar ahora** cada unidad (una vez, o cuando haya cambios). Te dice
-   cuántos ficheros ha indexado.
+1. **Indexar todo** cada unidad la primera vez. Después, cuando haya cambios,
+   pulsa **Actualizar** (incremental, más rápido). Te dice cuántos ficheros
+   ha indexado.
 2. **Buscar**: escribe el código, elige *Todos / Piezas / Ensamblajes* y pulsa
    **Buscar**. Busca en **todos los índices** comparando el código con el
    **nombre** del archivo y con el **Nº de pieza**. Resultados al instante.
@@ -71,7 +83,7 @@ fichero** de índice: `IndiceBuscador_<ruta>.txt` dentro de la carpeta del índi
    - La columna **Ruta** muestra la ubicación completa del fichero.
 
 > El índice es una "foto" del momento en que se creó. Si añades o mueves
-> ficheros, pulsa **Indexar ahora**. Si abres
+> ficheros, pulsa **Actualizar**. Si abres
 > un fichero que ya no existe, la regla te avisa de que reindexes.
 
 Las opciones (rutas y casillas) se recuerdan entre sesiones.

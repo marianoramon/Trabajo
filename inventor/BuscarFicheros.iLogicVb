@@ -48,6 +48,7 @@ Public Class BuscadorFicherosForm
     Private btnExaminarIndice As System.Windows.Forms.Button
     Private chkPartNumber As System.Windows.Forms.CheckBox
     Private btnIndexar As System.Windows.Forms.Button
+    Private btnActualizar As System.Windows.Forms.Button
     Private lblIndiceInfo As System.Windows.Forms.Label
     Private txtCodigo As System.Windows.Forms.TextBox
     Private rdoTodos As System.Windows.Forms.RadioButton
@@ -139,11 +140,15 @@ Public Class BuscadorFicherosForm
         Me.Controls.Add(chkPartNumber)
 
         ' --- Fila 5: indexar + info ---
-        btnIndexar = Boton("Indexar ahora", 145, 138, 150, 28, _
+        btnIndexar = Boton("Indexar todo", 145, 138, 115, 28, _
             System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left)
         AddHandler btnIndexar.Click, AddressOf OnIndexar
         Me.Controls.Add(btnIndexar)
-        lblIndiceInfo = Etiqueta("", 305, 143, 470)
+        btnActualizar = Boton("Actualizar", 265, 138, 115, 28, _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left)
+        AddHandler btnActualizar.Click, AddressOf OnActualizar
+        Me.Controls.Add(btnActualizar)
+        lblIndiceInfo = Etiqueta("", 388, 143, 390)
         Me.Controls.Add(lblIndiceInfo)
 
         ' --- Fila 6: codigo + buscar ---
@@ -383,7 +388,27 @@ Public Class BuscadorFicherosForm
     End Sub
 
     ' ================= INDEXACION =================
+    ' "Indexar todo": reconstruye el indice desde cero (relee todo, incluido Nº pieza).
     Private Sub OnIndexar(sender As Object, e As System.EventArgs)
+        LanzarIndexado(False)
+    End Sub
+
+    ' "Actualizar": incremental. Solo procesa ficheros nuevos o modificados;
+    ' los que no han cambiado conservan su entrada (no se relee el Nº de pieza).
+    Private Sub OnActualizar(sender As Object, e As System.EventArgs)
+        Dim archivo As String = ArchivoIndiceActual()
+        If Not System.IO.File.Exists(archivo) Then
+            Dim resp As System.Windows.Forms.DialogResult = System.Windows.Forms.MessageBox.Show( _
+                "Todavia no hay indice de esta carpeta, asi que se hara un indexado completo." & _
+                vbCrLf & vbCrLf & "¿Continuar?", "Actualizar indice", _
+                System.Windows.Forms.MessageBoxButtons.YesNo, _
+                System.Windows.Forms.MessageBoxIcon.Question)
+            If resp <> System.Windows.Forms.DialogResult.Yes Then Return
+        End If
+        LanzarIndexado(True)
+    End Sub
+
+    Private Sub LanzarIndexado(incremental As Boolean)
         If hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive Then Return
 
         Dim ruta As String = txtRuta.Text.Trim()
@@ -408,20 +433,22 @@ Public Class BuscadorFicherosForm
         GuardarAjustes()
         cancelar = False
         btnIndexar.Enabled = False
+        btnActualizar.Enabled = False
         btnBuscar.Enabled = False
         btnCancelar.Enabled = True
         Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
 
         Dim archivo As String = ArchivoIndiceActual()
+        Dim accion As String = If(incremental, "Actualizando", "Indexando")
 
         ' Ambos modos se ejecutan en SEGUNDO PLANO: puedes cerrar la ventana
         ' y seguir trabajando en Inventor; el indice se sigue creando.
         If chkPartNumber.Checked Then
-            lblEstado.Text = "Indexando con Nº de pieza en segundo plano (puedes cerrar y seguir trabajando)..."
-            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoCompleto(ruta, archivo))
+            lblEstado.Text = accion & " con Nº de pieza en segundo plano (puedes cerrar y seguir trabajando)..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoCompleto(ruta, archivo, incremental))
         Else
-            lblEstado.Text = "Indexando en segundo plano (puedes cerrar y seguir trabajando): " & ruta & " ..."
-            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo))
+            lblEstado.Text = accion & " en segundo plano (puedes cerrar y seguir trabajando): " & ruta & " ..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo, incremental))
         End If
         hiloTrabajo.IsBackground = True
         ' STA: necesario para usar COM (Apprentice Server) desde el hilo.
@@ -468,14 +495,22 @@ Public Class BuscadorFicherosForm
     End Sub
 
     ' --- Indexado RAPIDO (segundo plano, solo nombre; reutiliza Nº pieza previo) ---
-    Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String)
+    Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String, incremental As Boolean)
         _cuentaIndexada = 0
         _progreso = 0
         _nPiezas = 0
         _nEnsam = 0
         _nPlanos = 0
         _errorTrabajo = ""
-        Dim viejo = CargarIndiceDiccionario(archivo)
+        ' En "Indexar todo" se ignora el indice previo (diccionario vacio);
+        ' en "Actualizar" se reutiliza el Nº de pieza de los ficheros sin cambios.
+        Dim viejo As System.Collections.Generic.Dictionary(Of String, String())
+        If incremental Then
+            viejo = CargarIndiceDiccionario(archivo)
+        Else
+            viejo = New System.Collections.Generic.Dictionary(Of String, String())( _
+                System.StringComparer.OrdinalIgnoreCase)
+        End If
         Try
             Using sw As New System.IO.StreamWriter(archivo, False, System.Text.Encoding.UTF8)
                 sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta)
@@ -551,14 +586,22 @@ Public Class BuscadorFicherosForm
     End Sub
 
     ' --- Indexado COMPLETO (segundo plano, lee Nº de pieza con Apprentice) ---
-    Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String)
+    Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String, incremental As Boolean)
         _cuentaIndexada = 0
         _progreso = 0
         _nPiezas = 0
         _nEnsam = 0
         _nPlanos = 0
         _errorTrabajo = ""
-        Dim viejo = CargarIndiceDiccionario(archivo)
+        ' "Indexar todo" relee el Nº de pieza de TODOS los ficheros (diccionario vacio);
+        ' "Actualizar" solo lo lee de los ficheros nuevos o modificados.
+        Dim viejo As System.Collections.Generic.Dictionary(Of String, String())
+        If incremental Then
+            viejo = CargarIndiceDiccionario(archivo)
+        Else
+            viejo = New System.Collections.Generic.Dictionary(Of String, String())( _
+                System.StringComparer.OrdinalIgnoreCase)
+        End If
 
         Dim oApr As Inventor.ApprenticeServerComponent = Nothing
         Try
@@ -661,6 +704,7 @@ Public Class BuscadorFicherosForm
     Private Sub FinIndexado()
         Me.Cursor = System.Windows.Forms.Cursors.Default
         btnIndexar.Enabled = True
+        btnActualizar.Enabled = True
         btnBuscar.Enabled = True
         btnCancelar.Enabled = False
         ActualizarInfoIndice()
