@@ -439,7 +439,12 @@ Public Class BuscadorFicherosForm
         Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
 
         Dim archivo As String = ArchivoIndiceActual()
-        Dim accion As String = If(incremental, "Actualizando", "Indexando")
+        Dim accion As String
+        If incremental Then
+            accion = "Actualizando"
+        Else
+            accion = "Indexando"
+        End If
 
         ' Ambos modos se ejecutan en SEGUNDO PLANO: puedes cerrar la ventana
         ' y seguir trabajando en Inventor; el indice se sigue creando.
