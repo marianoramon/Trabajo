@@ -52,6 +52,7 @@ Sub Main()
             Dim exportarSeleccion As Boolean = formulario.ExportarSeleccion
             Dim incluirMarcas As Boolean = formulario.IncluirMarcas
             Dim rutaCustom As String = formulario.RutaDestino
+            Dim rutaPorCodigo As Boolean = formulario.RutaPorCodigo
 
             If exportarSeleccion AndAlso cantidadSeleccion = 0 Then
                 MessageBox.Show("No hay elementos seleccionados.", "Exportar DXF corte")
@@ -59,9 +60,9 @@ Sub Main()
             End If
 
             If exportarSeleccion Then
-                ExportarDXFSeleccionEnsamblaje(invApp, asmDoc, rutaCustom, incluirMarcas)
+                ExportarDXFSeleccionEnsamblaje(invApp, asmDoc, rutaCustom, incluirMarcas, rutaPorCodigo)
             Else
-                ExportarDXFDesdeEnsamblaje(invApp, asmDoc, rutaCustom, incluirMarcas)
+                ExportarDXFDesdeEnsamblaje(invApp, asmDoc, rutaCustom, incluirMarcas, rutaPorCodigo)
             End If
             Return
         End If
@@ -82,8 +83,9 @@ Sub Main()
 
             Dim incluirMarcas As Boolean = formulario.IncluirMarcas
             Dim rutaCustom As String = formulario.RutaDestino
+            Dim rutaPorCodigo As Boolean = formulario.RutaPorCodigo
 
-            ExportarDXFDesdePieza(invApp, partDoc, rutaCustom, incluirMarcas)
+            ExportarDXFDesdePieza(invApp, partDoc, rutaCustom, incluirMarcas, rutaPorCodigo)
             Return
         End If
 
@@ -114,10 +116,14 @@ Public Class FormularioExportarDXF
     Private WithEvents lblRuta As System.Windows.Forms.Label
     Private WithEvents gbModo As System.Windows.Forms.GroupBox
     Private WithEvents gbOpciones As System.Windows.Forms.GroupBox
+    Private WithEvents gbRuta As System.Windows.Forms.GroupBox
+    Private WithEvents rbRutaPersonalizada As System.Windows.Forms.RadioButton
+    Private WithEvents rbRutaPorCodigo As System.Windows.Forms.RadioButton
 
     Private _exportarSeleccion As Boolean = False
     Private _incluirMarcas As Boolean = False
     Private _rutaDestino As String = ""
+    Private _rutaPorCodigo As Boolean = False
     Private _haySeleccion As Boolean = False
     Private _rutaPorDefecto As String = ""
 
@@ -139,6 +145,12 @@ Public Class FormularioExportarDXF
         End Get
     End Property
 
+    Public ReadOnly Property RutaPorCodigo As Boolean
+        Get
+            Return _rutaPorCodigo
+        End Get
+    End Property
+
     Public Sub New(haySeleccion As Boolean, rutaDocumento As String)
         MyBase.New()
 
@@ -153,7 +165,7 @@ Public Class FormularioExportarDXF
 
         Me.Text = "Exportar DXF de Corte - Opciones"
         Me.Width = 500
-        Me.Height = 380
+        Me.Height = 480
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
         Me.MaximizeBox = False
         Me.MinimizeBox = False
@@ -201,32 +213,44 @@ Public Class FormularioExportarDXF
 
         gbOpciones.Controls.Add(chkMarcas)
 
-        ' Ruta de salida
-        lblRuta = New System.Windows.Forms.Label()
-        lblRuta.Text = "3. Ruta de salida (dejar en blanco = carpeta del documento):"
-        lblRuta.Left = 15
-        lblRuta.Top = 210
-        lblRuta.AutoSize = True
+        ' GroupBox Ruta de salida
+        gbRuta = New System.Windows.Forms.GroupBox()
+        gbRuta.Text = "3. Ubicacion de archivos DXF"
+        gbRuta.Left = 15
+        gbRuta.Top = 210
+        gbRuta.Width = 450
+        gbRuta.Height = 110
 
-        txtRuta = New System.Windows.Forms.TextBox()
-        txtRuta.Left = 15
-        txtRuta.Top = 235
-        txtRuta.Width = 380
-        txtRuta.Height = 25
+        rbRutaPorCodigo = New System.Windows.Forms.RadioButton()
+        rbRutaPorCodigo.Text = "Guardar en carpetas por codigo de pieza"
+        rbRutaPorCodigo.Left = 20
+        rbRutaPorCodigo.Top = 30
+        rbRutaPorCodigo.AutoSize = True
+        rbRutaPorCodigo.Checked = True
 
-        btnExaminar = New System.Windows.Forms.Button()
-        btnExaminar.Text = "Examinar..."
-        btnExaminar.Left = 405
-        btnExaminar.Top = 235
-        btnExaminar.Width = 60
-        btnExaminar.Height = 25
+        Dim lblPorCodigo As New System.Windows.Forms.Label()
+        lblPorCodigo.Text = "  (A02000-A02999, A01000-A01999, 40000-49999, etc.)"
+        lblPorCodigo.Left = 40
+        lblPorCodigo.Top = 55
+        lblPorCodigo.AutoSize = True
+        lblPorCodigo.ForeColor = System.Drawing.Color.Gray
+
+        rbRutaPersonalizada = New System.Windows.Forms.RadioButton()
+        rbRutaPersonalizada.Text = "Guardar en carpeta del ensamblaje (01_DXF_CORTE)"
+        rbRutaPersonalizada.Left = 20
+        rbRutaPersonalizada.Top = 75
+        rbRutaPersonalizada.AutoSize = True
+
+        gbRuta.Controls.Add(rbRutaPorCodigo)
+        gbRuta.Controls.Add(lblPorCodigo)
+        gbRuta.Controls.Add(rbRutaPersonalizada)
 
         ' Botones
         btnOK = New System.Windows.Forms.Button()
         btnOK.Text = "Exportar"
         btnOK.DialogResult = System.Windows.Forms.DialogResult.OK
         btnOK.Left = 310
-        btnOK.Top = 310
+        btnOK.Top = 335
         btnOK.Width = 70
         btnOK.Height = 25
 
@@ -234,15 +258,13 @@ Public Class FormularioExportarDXF
         btnCancel.Text = "Cancelar"
         btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel
         btnCancel.Left = 390
-        btnCancel.Top = 310
+        btnCancel.Top = 335
         btnCancel.Width = 75
         btnCancel.Height = 25
 
         Me.Controls.Add(gbModo)
         Me.Controls.Add(gbOpciones)
-        Me.Controls.Add(lblRuta)
-        Me.Controls.Add(txtRuta)
-        Me.Controls.Add(btnExaminar)
+        Me.Controls.Add(gbRuta)
         Me.Controls.Add(btnOK)
         Me.Controls.Add(btnCancel)
 
@@ -273,9 +295,11 @@ Public Class FormularioExportarDXF
 
         _exportarSeleccion = rbSeleccion.Checked
         _incluirMarcas = chkMarcas.Checked
-        _rutaDestino = Trim(txtRuta.Text)
+        _rutaPorCodigo = rbRutaPorCodigo.Checked
 
-        If _rutaDestino = "" Then
+        If _rutaPorCodigo Then
+            _rutaDestino = _rutaPorDefecto
+        Else
             _rutaDestino = _rutaPorDefecto
         End If
 
@@ -298,7 +322,8 @@ End Class
 Sub ExportarDXFDesdeEnsamblaje(ByVal invApp As Inventor.Application, _
                                ByVal asmDoc As AssemblyDocument, _
                                ByVal rutaCustom As String, _
-                               ByVal incluirMarcasPlegado As Boolean)
+                               ByVal incluirMarcasPlegado As Boolean, _
+                               ByVal rutaPorCodigo As Boolean)
 
     Dim asmFolder As String = RedirigirRutaHaQ(System.IO.Path.GetDirectoryName(asmDoc.FullFileName))
     Dim asmName As String = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
@@ -386,7 +411,7 @@ Sub ExportarDXFDesdeEnsamblaje(ByVal invApp As Inventor.Application, _
                 Continue For
             End Try
 
-            ProcesarDocumentoParaDXF(modelDoc, itemText, qty, outputFolder, usedFileNames, sw, exportedCount, skippedCount, errorCount, noCodeCount, duplicateCount, incluirMarcasPlegado)
+            ProcesarDocumentoParaDXF(modelDoc, itemText, qty, outputFolder, usedFileNames, sw, exportedCount, skippedCount, errorCount, noCodeCount, duplicateCount, incluirMarcasPlegado, rutaPorCodigo, rutaCustom)
 
         Next
 
@@ -413,7 +438,8 @@ End Sub
 Sub ExportarDXFSeleccionEnsamblaje(ByVal invApp As Inventor.Application, _
                                   ByVal asmDoc As AssemblyDocument, _
                                   ByVal rutaCustom As String, _
-                                  ByVal incluirMarcasPlegado As Boolean)
+                                  ByVal incluirMarcasPlegado As Boolean, _
+                                  ByVal rutaPorCodigo As Boolean)
 
     Dim documentos As New System.Collections.Generic.Dictionary(Of String, Document)( _
         System.StringComparer.OrdinalIgnoreCase)
@@ -520,7 +546,9 @@ Sub ExportarDXFSeleccionEnsamblaje(ByVal invApp As Inventor.Application, _
                 errorCount, _
                 noCodeCount, _
                 duplicateCount, _
-                incluirMarcasPlegado)
+                incluirMarcasPlegado, _
+                rutaPorCodigo, _
+                rutaCustom)
 
         Next
 
@@ -621,7 +649,8 @@ End Sub
 Sub ExportarDXFDesdePieza(ByVal invApp As Inventor.Application, _
                           ByVal partDoc As PartDocument, _
                           ByVal rutaCustom As String, _
-                          ByVal incluirMarcasPlegado As Boolean)
+                          ByVal incluirMarcasPlegado As Boolean, _
+                          ByVal rutaPorCodigo As Boolean)
 
     Dim partFolder As String = RedirigirRutaHaQ(System.IO.Path.GetDirectoryName(partDoc.FullFileName))
     Dim partName As String = System.IO.Path.GetFileNameWithoutExtension(partDoc.FullFileName)
@@ -644,7 +673,7 @@ Sub ExportarDXFDesdePieza(ByVal invApp As Inventor.Application, _
     Using sw As New System.IO.StreamWriter(logPath, False, utf8Bom)
 
         EscribirCabeceraLog(sw)
-        ProcesarDocumentoParaDXF(partDoc, "1", "1", outputFolder, usedFileNames, sw, exportedCount, skippedCount, errorCount, noCodeCount, duplicateCount, incluirMarcasPlegado)
+        ProcesarDocumentoParaDXF(partDoc, "1", "1", outputFolder, usedFileNames, sw, exportedCount, skippedCount, errorCount, noCodeCount, duplicateCount, incluirMarcasPlegado, rutaPorCodigo, rutaCustom)
 
     End Using
 
@@ -676,7 +705,9 @@ Sub ProcesarDocumentoParaDXF(ByVal modelDoc As Document, _
                              ByRef errorCount As Integer, _
                              ByRef noCodeCount As Integer, _
                              ByRef duplicateCount As Integer, _
-                             ByVal incluirMarcasPlegado As Boolean)
+                             ByVal incluirMarcasPlegado As Boolean, _
+                             ByVal rutaPorCodigo As Boolean, _
+                             ByVal rutaBase As String)
 
     Dim partNumber As String = ""
     Dim description As String = ""
@@ -751,6 +782,16 @@ Sub ProcesarDocumentoParaDXF(ByVal modelDoc As Document, _
             Exit Sub
         End If
 
+        ' Si se selecciona ruta por código, buscar la carpeta correspondiente
+        Dim carpetaFinal As String = outputFolder
+        If rutaPorCodigo Then
+            Dim carpetaCodigo As String = BuscarCarpetaPorCodigo(partNumber, rutaBase)
+            If carpetaCodigo <> "" Then
+                carpetaFinal = System.IO.Path.Combine(carpetaCodigo, "01_DXF_CORTE")
+                CrearCarpetaSiNoExiste(carpetaFinal)
+            End If
+        End If
+
         thickness = GetSheetMetalThicknessMm(smDef)
 
         Try
@@ -786,7 +827,7 @@ Sub ProcesarDocumentoParaDXF(ByVal modelDoc As Document, _
             usedFileNames.Add(baseFileName, 1)
         End If
 
-        dxfPath = System.IO.Path.Combine(outputFolder, dxfFileName)
+        dxfPath = System.IO.Path.Combine(carpetaFinal, dxfFileName)
 
         Dim piezaTienePlegados As Boolean = DocumentoTienePlegados(partDoc)
         Dim aplicarMarcas As Boolean = incluirMarcasPlegado AndAlso piezaTienePlegados
@@ -1425,6 +1466,60 @@ Sub CrearCarpetaSiNoExiste(ByVal ruta As String)
         System.IO.Directory.CreateDirectory(ruta)
     End If
 End Sub
+
+Function BuscarCarpetaPorCodigo(ByVal partNumber As String, ByVal rutaBase As String) As String
+
+    Try
+        If partNumber = "" OrElse rutaBase = "" Then Return ""
+        If Not System.IO.Directory.Exists(rutaBase) Then Return ""
+
+        partNumber = Trim(partNumber).ToUpper()
+
+        Dim directorios As String() = System.IO.Directory.GetDirectories(rutaBase)
+
+        For Each carpeta As String In directorios
+            Dim nombreCarpeta As String = System.IO.Path.GetFileName(carpeta).ToUpper()
+
+            If nombreCarpeta.Contains("-") Then
+                Dim partes() As String = nombreCarpeta.Split("-"c)
+                If partes.Length = 2 Then
+                    Dim min As String = partes(0).Trim()
+                    Dim max As String = partes(1).Trim()
+
+                    If EstaEnRango(partNumber, min, max) Then
+                        Return carpeta
+                    End If
+                End If
+            End If
+        Next
+
+    Catch
+    End Try
+
+    Return ""
+
+End Function
+
+Function EstaEnRango(ByVal codigo As String, ByVal minStr As String, ByVal maxStr As String) As Boolean
+
+    Try
+        If codigo = "" OrElse minStr = "" OrElse maxStr = "" Then Return False
+
+        codigo = codigo.ToUpper()
+        minStr = minStr.ToUpper()
+        maxStr = maxStr.ToUpper()
+
+        ' Comparación alfabética/numérica
+        If String.Compare(codigo, minStr) >= 0 AndAlso String.Compare(codigo, maxStr) <= 0 Then
+            Return True
+        End If
+
+    Catch
+    End Try
+
+    Return False
+
+End Function
 
 '---------------------------------------------------------
 ' LOG CSV
