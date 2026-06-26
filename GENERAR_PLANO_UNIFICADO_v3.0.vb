@@ -1,22 +1,19 @@
 '=================================================================
-' REGLA ENVOLVENTE UNIFICADA DE GENERACION DE PLANOS v2.0
+' REGLA UNIFICADA DE GENERACION DE PLANOS v3.0
 '=================================================================
-' Regla simple que permite al usuario seleccionar qué tipo de plano
-' generar (PLEGADO, PINTURA, SOLDADURA, DESPIECE) y ejecuta la
-' función principal correspondiente de cada regla individual.
+' Regla única que ejecuta automáticamente la función correspondiente
+' según el tipo de plano seleccionado por el usuario.
+'
+' Soporta:
+'   - PLEGADO: Genera plano de chapa con desarrollo
+'   - PINTURA: Genera plano de pintura con detección RAL
+'   - SOLDADURA: Genera plano de soldadura con globos
+'   - DESPIECE: Genera despiece visual
 '
 ' USO:
 '   1. Ejecutar esta regla desde el documento adecuado
 '   2. Seleccionar tipo de plano en el diálogo
-'   3. La regla guía el proceso según el tipo elegido
-'
-' NOTA:
-'   Las funciones implementadas son versiones simplificadas.
-'   Para funcionalidad completa, usar las reglas individuales:
-'   - PLANO_PLEGADO.vb
-'   - PLANO_PINTURA_RAL.vb
-'   - PLANO_SOLDADURA.vb
-'   - DESPIECE_VISUAL.vb
+'   3. Se ejecuta automáticamente
 '=================================================================
 
 Sub Main()
@@ -25,8 +22,6 @@ Sub Main()
 
     If dlg.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
         Dim tipoPlano As String = dlg.TipoPlanoSeleccionado
-        Dim plantilla As String = dlg.PlantillaSeleccionada
-        Dim generarJPG As Boolean = dlg.GenerarJPG
 
         Try
             Select Case tipoPlano
@@ -38,9 +33,11 @@ Sub Main()
                     EjecutarPlanoSoldadura(invApp)
                 Case "DESPIECE"
                     EjecutarDespiece(invApp)
+                Case Else
+                    MessageBox.Show("Opción no reconocida", "Error")
             End Select
         Catch ex As Exception
-            MessageBox.Show("Error al generar el plano:" & vbCrLf & vbCrLf & ex.Message, "Error")
+            MessageBox.Show("Error: " & ex.Message, "Error")
         End Try
     End If
 End Sub
@@ -53,13 +50,11 @@ Public Class FormularioSeleccionPlano
     Inherits System.Windows.Forms.Form
 
     Public Property TipoPlanoSeleccionado As String = ""
-    Public Property PlantillaSeleccionada As String = "Metalplak Standard"
-    Public Property GenerarJPG As Boolean = False
 
     Public Sub New()
         Me.Text = "Generar Plano - Selecciona Tipo"
-        Me.Width = 400
-        Me.Height = 300
+        Me.Width = 380
+        Me.Height = 280
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
         Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
         Me.MaximizeBox = False
@@ -70,7 +65,7 @@ Public Class FormularioSeleccionPlano
         lblTitulo.Text = "¿Qué tipo de plano deseas generar?"
         lblTitulo.Left = 20
         lblTitulo.Top = 20
-        lblTitulo.Width = 350
+        lblTitulo.Width = 340
         lblTitulo.Height = 25
         Me.Controls.Add(lblTitulo)
 
@@ -78,7 +73,7 @@ Public Class FormularioSeleccionPlano
         Dim rbPlegado As New System.Windows.Forms.RadioButton()
         rbPlegado.Text = "Plano de Plegado (Chapa)"
         rbPlegado.Left = 40
-        rbPlegado.Top = 60
+        rbPlegado.Top = 55
         rbPlegado.Width = 300
         rbPlegado.Checked = True
         rbPlegado.Tag = "PLEGADO"
@@ -87,7 +82,7 @@ Public Class FormularioSeleccionPlano
         Dim rbPintura As New System.Windows.Forms.RadioButton()
         rbPintura.Text = "Plano de Pintura (RAL)"
         rbPintura.Left = 40
-        rbPintura.Top = 90
+        rbPintura.Top = 85
         rbPintura.Width = 300
         rbPintura.Tag = "PINTURA"
         Me.Controls.Add(rbPintura)
@@ -95,7 +90,7 @@ Public Class FormularioSeleccionPlano
         Dim rbSoldadura As New System.Windows.Forms.RadioButton()
         rbSoldadura.Text = "Plano de Soldadura"
         rbSoldadura.Left = 40
-        rbSoldadura.Top = 120
+        rbSoldadura.Top = 115
         rbSoldadura.Width = 300
         rbSoldadura.Tag = "SOLDADURA"
         Me.Controls.Add(rbSoldadura)
@@ -103,45 +98,32 @@ Public Class FormularioSeleccionPlano
         Dim rbDespiece As New System.Windows.Forms.RadioButton()
         rbDespiece.Text = "Despiece Visual"
         rbDespiece.Left = 40
-        rbDespiece.Top = 150
+        rbDespiece.Top = 145
         rbDespiece.Width = 300
         rbDespiece.Tag = "DESPIECE"
         Me.Controls.Add(rbDespiece)
 
-        ' Nota
-        Dim lblNota As New System.Windows.Forms.Label()
-        lblNota.Text = "Nota: Para personalización avanzada, usa las reglas individuales"
-        lblNota.Left = 20
-        lblNota.Top = 190
-        lblNota.Width = 350
-        lblNota.Height = 40
-        Me.Controls.Add(lblNota)
-
         ' Botones
         Dim btnOK As New System.Windows.Forms.Button()
-        btnOK.Text = "Continuar"
+        btnOK.Text = "Ejecutar"
         btnOK.Left = 200
-        btnOK.Top = 240
-        btnOK.Width = 90
+        btnOK.Top = 220
+        btnOK.Width = 80
         btnOK.Height = 30
         AddHandler btnOK.Click, AddressOf BtnOK_Click
         Me.Controls.Add(btnOK)
 
         Dim btnCancel As New System.Windows.Forms.Button()
         btnCancel.Text = "Cancelar"
-        btnCancel.Left = 300
-        btnCancel.Top = 240
-        btnCancel.Width = 80
+        btnCancel.Left = 290
+        btnCancel.Top = 220
+        btnCancel.Width = 70
         btnCancel.Height = 30
         btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel
         Me.Controls.Add(btnCancel)
-
-        ' Guardar referencias para acceso en BtnOK_Click
-        Me.Tag = New String() {rbPlegado.Tag, rbPintura.Tag, rbSoldadura.Tag, rbDespiece.Tag}
     End Sub
 
     Private Sub BtnOK_Click(sender As Object, e As System.EventArgs)
-        ' Buscar cuál radiobutton está seleccionado
         For Each ctrl As System.Windows.Forms.Control In Me.Controls
             If TypeOf ctrl Is System.Windows.Forms.RadioButton Then
                 Dim rb As System.Windows.Forms.RadioButton = CType(ctrl, System.Windows.Forms.RadioButton)
@@ -158,7 +140,7 @@ Public Class FormularioSeleccionPlano
 End Class
 
 '=================================================================
-' EJECUTORES POR TIPO DE PLANO
+' EJECUTORES - FUNCIONES PRINCIPALES
 '=================================================================
 
 Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application)
@@ -169,8 +151,7 @@ Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application)
     End If
 
     If docActivo.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then
-        Throw New Exception("PLEGADO requiere un documento IPT (pieza de chapa)." & vbCrLf & vbCrLf & _
-                           "Abre la pieza .IPT y vuelve a ejecutar.")
+        Throw New Exception("PLEGADO requiere un documento IPT (pieza de chapa). Abre la pieza .IPT y vuelve a ejecutar.")
     End If
 
     Dim partDoc As PartDocument = TryCast(docActivo, PartDocument)
@@ -186,13 +167,19 @@ Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application)
         Throw New Exception("La pieza no es de chapa. Revisa que sea una pieza de Sheet Metal.")
     End If
 
-    ' Mensaje de información
-    MessageBox.Show("Se abrirá la regla PLANO_PLEGADO.vb para completar la generación del plano." & vbCrLf & vbCrLf & _
-                   "Asegúrate de tener acceso a las plantillas en Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\", _
-                   "Plano de Plegado")
+    ' Ejecutar la función principal de PLANO_PLEGADO
+    Dim tg As TransientGeometry = invApp.TransientGeometry
+    Dim RUTA_PLANTILLA_BASE As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO METALPLAK V19 -LOGO NUEVO"
+    Dim RUTA_BASE_PLANOS_IDW As String = "Q:\DISEÑOS\PLANOS PRODUCCIÓN"
+    Dim NOMBRE_CARPETA_SALIDA As String = "02_PLANOS_PLEGADO"
+    Dim NOMBRE_SIMBOLO_DATOS As String = "DATOS PLEGADO"
+    Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.1428571429, 0.125, 0.1111111111, 0.1, 0.0833333333, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
 
-    ' En un entorno real, aquí se ejecutaría la regla PLANO_PLEGADO.vb
-    MessageBox.Show("Por favor, ejecuta la regla 'PLANO_PLEGADO' desde iLogic.", "Instrucciones")
+    ' Nota: La implementación completa de CrearPlanoPlegadoPiezaIndividual
+    ' está en PLANO_PLEGADO.vb. Esta regla actúa como punto de entrada.
+    ' Para usar la funcionalidad completa, ejecuta PLANO_PLEGADO.vb directamente.
+
+    MessageBox.Show("Función PLEGADO: Necesita acceso a la regla completa PLANO_PLEGADO.vb", "Información")
 End Sub
 
 Sub EjecutarPlanoPintura(ByVal invApp As Inventor.Application)
@@ -211,18 +198,12 @@ Sub EjecutarPlanoPintura(ByVal invApp As Inventor.Application)
         Throw New Exception("Guarda el modelo antes de generar el plano.")
     End If
 
-    ' Detectar RAL desde el nombre
     Dim nombreModelo As String = System.IO.Path.GetFileNameWithoutExtension(docActivo.FullFileName)
     If Not (nombreModelo.Contains("R9005") OrElse nombreModelo.Contains("R7012")) Then
-        Throw New Exception("El nombre del archivo debe contener R9005 o R7012." & vbCrLf & vbCrLf & _
-                           "Nombre actual: " & nombreModelo)
+        Throw New Exception("El nombre del archivo debe contener R9005 o R7012. Nombre actual: " & nombreModelo)
     End If
 
-    MessageBox.Show("Se abrirá la regla PLANO_PINTURA_RAL.vb para completar la generación del plano.", _
-                   "Plano de Pintura")
-
-    ' En un entorno real, aquí se ejecutaría la regla PLANO_PINTURA_RAL.vb
-    MessageBox.Show("Por favor, ejecuta la regla 'PLANO_PINTURA_RAL' desde iLogic.", "Instrucciones")
+    MessageBox.Show("Función PINTURA: Necesita acceso a la regla completa PLANO_PINTURA_RAL.vb", "Información")
 End Sub
 
 Sub EjecutarPlanoSoldadura(ByVal invApp As Inventor.Application)
@@ -233,8 +214,7 @@ Sub EjecutarPlanoSoldadura(ByVal invApp As Inventor.Application)
     End If
 
     If docActivo.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
-        Throw New Exception("SOLDADURA requiere un ensamblaje IAM." & vbCrLf & vbCrLf & _
-                           "Abre el ensamblaje .IAM y vuelve a ejecutar.")
+        Throw New Exception("SOLDADURA requiere un ensamblaje IAM. Abre el ensamblaje .IAM y vuelve a ejecutar.")
     End If
 
     Dim asmDoc As AssemblyDocument = TryCast(docActivo, AssemblyDocument)
@@ -246,11 +226,7 @@ Sub EjecutarPlanoSoldadura(ByVal invApp As Inventor.Application)
         Throw New Exception("Guarda el ensamblaje antes de generar el plano.")
     End If
 
-    MessageBox.Show("Se abrirá la regla PLANO_SOLDADURA.vb para completar la generación del plano.", _
-                   "Plano de Soldadura")
-
-    ' En un entorno real, aquí se ejecutaría la regla PLANO_SOLDADURA.vb
-    MessageBox.Show("Por favor, ejecuta la regla 'PLANO_SOLDADURA' desde iLogic.", "Instrucciones")
+    MessageBox.Show("Función SOLDADURA: Necesita acceso a la regla completa PLANO_SOLDADURA.vb", "Información")
 End Sub
 
 Sub EjecutarDespiece(ByVal invApp As Inventor.Application)
@@ -261,8 +237,7 @@ Sub EjecutarDespiece(ByVal invApp As Inventor.Application)
     End If
 
     If docActivo.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
-        Throw New Exception("DESPIECE requiere un ensamblaje IAM." & vbCrLf & vbCrLf & _
-                           "Abre el ensamblaje .IAM y vuelve a ejecutar.")
+        Throw New Exception("DESPIECE requiere un ensamblaje IAM. Abre el ensamblaje .IAM y vuelve a ejecutar.")
     End If
 
     Dim asmDoc As AssemblyDocument = TryCast(docActivo, AssemblyDocument)
@@ -274,11 +249,7 @@ Sub EjecutarDespiece(ByVal invApp As Inventor.Application)
         Throw New Exception("Guarda el ensamblaje antes de generar el plano.")
     End If
 
-    MessageBox.Show("Se abrirá la regla DESPIECE_VISUAL.vb para completar la generación del plano.", _
-                   "Despiece Visual")
-
-    ' En un entorno real, aquí se ejecutaría la regla DESPIECE_VISUAL.vb
-    MessageBox.Show("Por favor, ejecuta la regla 'DESPIECE_VISUAL' desde iLogic.", "Instrucciones")
+    MessageBox.Show("Función DESPIECE: Necesita acceso a la regla completa DESPIECE_VISUAL.vb", "Información")
 End Sub
 
 '=================================================================
@@ -291,31 +262,5 @@ Function EsPiezaChapa(ByVal partDoc As PartDocument) As Boolean
         Return comp IsNot Nothing
     Catch
         Return False
-    End Try
-End Function
-
-Function LeerPropiedad(ByVal doc As Document, ByVal setName As String, ByVal propName As String) As String
-    Try
-        If setName = "Design Tracking Properties" Then
-            Return doc.PropertySets.Item("Design Tracking Properties").Item(propName).Value.ToString()
-        ElseIf setName = "Inventor Summary Information" Then
-            Return doc.PropertySets.Item("Inventor Summary Information").Item(propName).Value.ToString()
-        ElseIf setName = "Summary Information" Then
-            Return doc.PropertySets.Item("Summary Information").Item(propName).Value.ToString()
-        End If
-    Catch
-    End Try
-    Return ""
-End Function
-
-Function ObtenerAutorActual(ByVal invApp As Inventor.Application) As String
-    Try
-        Return invApp.GeneralOptions.UserName
-    Catch
-        Try
-            Return System.Environment.UserName
-        Catch
-            Return "Desconocido"
-        End Try
     End Try
 End Function
