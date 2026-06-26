@@ -297,7 +297,7 @@ Public Class BuscadorFicherosForm
         Try
             Dim carpeta As String = CarpetaIndice()
             If System.IO.Directory.Exists(carpeta) Then
-                For Each f As String In System.IO.Directory.GetFiles(carpeta, "IndiceBuscador*.txt")
+                For Each f As String In System.IO.Directory.GetFiles(carpeta, "IndiceBuscador*")
                     res.Add(f)
                 Next
             End If
