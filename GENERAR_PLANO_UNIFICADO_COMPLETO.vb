@@ -1169,16 +1169,39 @@ Function PedirCodigoPlegado(ByVal partDoc As PartDocument) As String
     Dim valorAnterior As String = _
         LeerPropiedadUsuario(partDoc, "COD_PLEGADO")
 
+    Dim rutaIndex As String = "P:\000 MARIANADAS\INDEX"
+    Dim codigos As New System.Collections.Generic.List(Of String)
+
+    ' Leer codigos disponibles desde la ruta de índices
+    If System.IO.Directory.Exists(rutaIndex) Then
+        Try
+            Dim archivos() As String = System.IO.Directory.GetFiles(rutaIndex)
+            For Each archivo As String In archivos
+                Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(archivo)
+                If nombre <> "" Then
+                    codigos.Add(nombre)
+                End If
+            Next
+            codigos.Sort()
+        Catch
+            ' Si falla la lectura, continuar sin lista
+        End Try
+    End If
+
     Dim valor As String = ""
 
     Do
-        valor = Microsoft.VisualBasic.Interaction.InputBox( _
-            "Introduce el codigo de plegado que debe aparecer en el plano." & vbCrLf & vbCrLf & _
-            "Se mostrara con el formato:" & vbCrLf & _
-            "COD PLEG" & vbCrLf & _
-            "0000", _
-            "Codigo de plegado", _
-            valorAnterior)
+        If codigos.Count > 0 Then
+            valor = MostrarDialogoSeleccionCodigo(codigos, valorAnterior)
+        Else
+            valor = Microsoft.VisualBasic.Interaction.InputBox( _
+                "Introduce el codigo de plegado que debe aparecer en el plano." & vbCrLf & vbCrLf & _
+                "Se mostrara con el formato:" & vbCrLf & _
+                "COD PLEG" & vbCrLf & _
+                "0000", _
+                "Codigo de plegado", _
+                valorAnterior)
+        End If
 
         valor = Trim(valor)
 
@@ -1199,6 +1222,87 @@ Function PedirCodigoPlegado(ByVal partDoc As PartDocument) As String
         End If
 
     Loop
+
+End Function
+
+Function MostrarDialogoSeleccionCodigo(ByVal codigos As System.Collections.Generic.List(Of String), _
+                                       ByVal valorPorDefecto As String) As String
+
+    Dim form As New System.Windows.Forms.Form()
+    form.Text = "Seleccionar Código de Plegado"
+    form.Width = 400
+    form.Height = 500
+    form.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
+    form.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
+    form.MaximizeBox = False
+    form.MinimizeBox = False
+
+    Dim lblInstruccion As New System.Windows.Forms.Label()
+    lblInstruccion.Text = "Selecciona un código o escribe uno nuevo:"
+    lblInstruccion.Top = 10
+    lblInstruccion.Left = 10
+    lblInstruccion.Width = 360
+    lblInstruccion.Height = 25
+    form.Controls.Add(lblInstruccion)
+
+    Dim listBox As New System.Windows.Forms.ListBox()
+    listBox.Top = 40
+    listBox.Left = 10
+    listBox.Width = 360
+    listBox.Height = 350
+    For Each codigo As String In codigos
+        listBox.Items.Add(codigo)
+    Next
+    form.Controls.Add(listBox)
+
+    Dim lblOPuede As New System.Windows.Forms.Label()
+    lblOPuede.Text = "O escriba un código nuevo:"
+    lblOPuede.Top = 400
+    lblOPuede.Left = 10
+    lblOPuede.Width = 360
+    lblOPuede.Height = 20
+    form.Controls.Add(lblOPuede)
+
+    Dim txtCodigo As New System.Windows.Forms.TextBox()
+    txtCodigo.Top = 420
+    txtCodigo.Left = 10
+    txtCodigo.Width = 360
+    txtCodigo.Height = 25
+    txtCodigo.Text = valorPorDefecto
+    form.Controls.Add(txtCodigo)
+
+    Dim btnOK As New System.Windows.Forms.Button()
+    btnOK.Text = "OK"
+    btnOK.Width = 80
+    btnOK.Height = 30
+    btnOK.Top = 455
+    btnOK.Left = 150
+    btnOK.DialogResult = System.Windows.Forms.DialogResult.OK
+    form.Controls.Add(btnOK)
+    form.AcceptButton = btnOK
+
+    Dim btnCancelar As New System.Windows.Forms.Button()
+    btnCancelar.Text = "Cancelar"
+    btnCancelar.Width = 80
+    btnCancelar.Height = 30
+    btnCancelar.Top = 455
+    btnCancelar.Left = 250
+    btnCancelar.DialogResult = System.Windows.Forms.DialogResult.Cancel
+    form.Controls.Add(btnCancelar)
+    form.CancelButton = btnCancelar
+
+    ' Si selecciona un item de la lista, ponerlo en el textbox
+    AddHandler listBox.SelectedIndexChanged, Sub(sender As Object, e As EventArgs)
+        If listBox.SelectedItem IsNot Nothing Then
+            txtCodigo.Text = listBox.SelectedItem.ToString()
+        End If
+    End Sub
+
+    If form.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
+        Return Trim(txtCodigo.Text)
+    Else
+        Return ""
+    End If
 
 End Function
 
