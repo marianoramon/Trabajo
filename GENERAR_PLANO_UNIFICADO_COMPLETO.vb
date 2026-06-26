@@ -1212,21 +1212,14 @@ Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
         If sheet Is Nothing Then Exit Sub
         If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
 
-        ' Crear un único bloque de texto con dos líneas
-        Dim textoCompleto As String = "COD PLEG" & vbCrLf & Trim(codigo)
+        ' Crear un único bloque de texto con dos líneas usando salto de línea
+        Dim textoCompleto As String = "COD PLEG" & vbLf & Trim(codigo)
         Dim nota As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddFitted(punto, textoCompleto)
 
         Try
             nota.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
-            nota.TextSize = 0.23  ' 2.3 MM para la primera línea
+            nota.TextSize = 0.35  ' Tamaño intermedio para ambas líneas
         Catch
-        End Try
-
-        ' Usar FormattedText para aplicar diferentes tamaños a cada línea
-        Try
-            nota.FormattedText = "<p>COD PLEG</p><p><size scale=""2.17"">1115</size></p>"
-        Catch
-            ' Si FormattedText no funciona, mantener el tamaño uniforme
         End Try
 
     Catch ex As Exception
