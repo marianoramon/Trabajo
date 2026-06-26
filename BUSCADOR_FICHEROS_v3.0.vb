@@ -113,12 +113,15 @@ Public Class BuscadorFicherosForm
         AddHandler cboUnidad.SelectedIndexChanged, AddressOf OnUnidadChanged
         Me.Controls.Add(cboUnidad)
 
-        ' --- Fila 3: carpeta del indice (fija) ---
+        ' --- Fila 3: carpeta del indice ---
         Me.Controls.Add(Etiqueta("Carpeta del indice:", 12, 81, 130))
         txtIndice = New System.Windows.Forms.TextBox()
         txtIndice.Left = 145 : txtIndice.Top = 78 : txtIndice.Width = 490 : txtIndice.Anchor = anchTLR
-        txtIndice.ReadOnly = True
+        AddHandler txtIndice.TextChanged, AddressOf OnIndiceCarpetaChanged
         Me.Controls.Add(txtIndice)
+        btnExaminarIndice = Boton("Examinar...", 660, 76, 115, 26, anchTR)
+        AddHandler btnExaminarIndice.Click, AddressOf OnExaminarIndice
+        Me.Controls.Add(btnExaminarIndice)
 
         ' --- Fila 4: opciones de indexado ---
         chkPartNumber = New System.Windows.Forms.CheckBox()
@@ -235,18 +238,20 @@ Public Class BuscadorFicherosForm
 
     Private Sub CargarAjustes()
         Dim ruta As String = RUTA_DEFECTO
+        Dim indice As String = RUTA_INDICES
         Dim pn As Boolean = False
         Try
             Dim a As String = ArchivoAjustes()
             If System.IO.File.Exists(a) Then
                 Dim ls() As String = System.IO.File.ReadAllLines(a)
                 If ls.Length >= 1 AndAlso ls(0).Trim() <> "" Then ruta = ls(0).Trim()
+                If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
                 If ls.Length >= 3 Then pn = (ls(2).Trim() = "1")
             End If
         Catch
         End Try
         txtRuta.Text = ruta
-        txtIndice.Text = RUTA_INDICES
+        txtIndice.Text = indice
         chkPartNumber.Checked = pn
     End Sub
 
@@ -254,14 +259,16 @@ Public Class BuscadorFicherosForm
         Try
             System.IO.Directory.CreateDirectory(CarpetaConfig())
             System.IO.File.WriteAllText(ArchivoAjustes(), _
-                txtRuta.Text.Trim() & vbCrLf & vbCrLf & _
+                txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf & _
                 If(chkPartNumber.Checked, "1", "0") & vbCrLf)
         Catch
         End Try
     End Sub
 
     Private Function CarpetaIndice() As String
-        Return RUTA_INDICES
+        Dim carpeta As String = txtIndice.Text.Trim()
+        If carpeta = "" Then carpeta = RUTA_INDICES
+        Return carpeta
     End Function
 
     Private Function Sanitizar(s As String) As String
