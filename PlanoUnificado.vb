@@ -927,6 +927,31 @@ Function LimpiarNombreArchivo(ByVal nombre As String) As String
     Return nombre
 End Function
 
+Function LeerPropiedadUsuario(ByVal doc As Document, ByVal propName As String) As String
+    Try
+        Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
+        Dim p As Inventor.Property = ps.Item(propName)
+        If p Is Nothing Then Return ""
+        If p.Value Is Nothing Then Return ""
+        Return CStr(p.Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, ByVal value As String)
+    Try
+        Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            Dim p As Inventor.Property = ps.Item(propName)
+            p.Value = value
+        Catch
+            ps.Add(value, propName)
+        End Try
+    Catch
+    End Try
+End Sub
+
 Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaPDF As String)
     Try
         Dim pdfAddIn As TranslatorAddIn = invApp.ApplicationAddIns.ItemById("{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}")
