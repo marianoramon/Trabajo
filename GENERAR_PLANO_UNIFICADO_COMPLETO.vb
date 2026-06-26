@@ -13,7 +13,14 @@ Sub Main()
     Dim tg As TransientGeometry = invApp.TransientGeometry
 
     ' Mostrar diálogo de selección
-    Dim tipoPlano As String = MostrarDialogoSeleccion()
+    Dim form As New FormularioSeleccionPlano()
+    Dim tipoPlano As String = ""
+    Dim incluirCodigoPlegado As Boolean = True
+
+    If form.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
+        tipoPlano = form.PlanoSeleccionado
+        incluirCodigoPlegado = form.IncluirCodigoPlegado
+    End If
 
     If tipoPlano = "" Then
         Exit Sub
@@ -22,7 +29,7 @@ Sub Main()
     Try
         Select Case tipoPlano
             Case "PLEGADO"
-                EjecutarPlanoPlegado(invApp, tg)
+                EjecutarPlanoPlegado(invApp, tg, incluirCodigoPlegado)
             Case "PINTURA"
                 EjecutarPlanoPintura(invApp, tg)
             Case "SOLDADURA"
@@ -36,24 +43,6 @@ Sub Main()
 
 End Sub
 
-'---------------------------------------------------------
-' DIÁLOGO DE SELECCIÓN - CLASE FORM PROPIA
-'---------------------------------------------------------
-
-Function MostrarDialogoSeleccion() As String
-    Dim form As New FormularioSeleccionPlano()
-    Dim resultado As String = ""
-
-    Try
-        If form.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
-            resultado = form.PlanoSeleccionado
-        End If
-    Catch ex As Exception
-        MessageBox.Show("Error en diálogo: " & ex.Message, "Error")
-    End Try
-
-    Return resultado
-End Function
 
 '---------------------------------------------------------
 ' CLASE FORMULARIO PARA SELECCIÓN DE PLANO
@@ -63,15 +52,18 @@ Class FormularioSeleccionPlano
     Inherits System.Windows.Forms.Form
 
     Public PlanoSeleccionado As String = ""
+    Public IncluirCodigoPlegado As Boolean = True
     Private rbPlegado As System.Windows.Forms.RadioButton
     Private rbPintura As System.Windows.Forms.RadioButton
     Private rbSoldadura As System.Windows.Forms.RadioButton
     Private rbDespiece As System.Windows.Forms.RadioButton
+    Private chkCodigoPlegado As System.Windows.Forms.CheckBox
+    Private lblOpciones As System.Windows.Forms.Label
 
     Sub New()
         Me.Text = "Seleccionar Plano a Generar"
-        Me.Width = 350
-        Me.Height = 350
+        Me.Width = 380
+        Me.Height = 420
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
         Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
         Me.MaximizeBox = False
@@ -93,6 +85,7 @@ Class FormularioSeleccionPlano
         rbPlegado.Left = 30
         rbPlegado.Width = 280
         rbPlegado.Height = 25
+        AddHandler rbPlegado.CheckedChanged, AddressOf RadioButton_CheckedChanged
         Me.Controls.Add(rbPlegado)
 
         ' RadioButton PINTURA
@@ -102,6 +95,7 @@ Class FormularioSeleccionPlano
         rbPintura.Left = 30
         rbPintura.Width = 280
         rbPintura.Height = 25
+        AddHandler rbPintura.CheckedChanged, AddressOf RadioButton_CheckedChanged
         Me.Controls.Add(rbPintura)
 
         ' RadioButton SOLDADURA
@@ -111,6 +105,7 @@ Class FormularioSeleccionPlano
         rbSoldadura.Left = 30
         rbSoldadura.Width = 280
         rbSoldadura.Height = 25
+        AddHandler rbSoldadura.CheckedChanged, AddressOf RadioButton_CheckedChanged
         Me.Controls.Add(rbSoldadura)
 
         ' RadioButton DESPIECE
@@ -121,15 +116,37 @@ Class FormularioSeleccionPlano
         rbDespiece.Width = 280
         rbDespiece.Height = 25
         rbDespiece.Checked = True
+        AddHandler rbDespiece.CheckedChanged, AddressOf RadioButton_CheckedChanged
         Me.Controls.Add(rbDespiece)
+
+        ' Etiqueta de opciones
+        lblOpciones = New System.Windows.Forms.Label()
+        lblOpciones.Text = "Opciones de Plegado:"
+        lblOpciones.Top = 195
+        lblOpciones.Left = 30
+        lblOpciones.Width = 280
+        lblOpciones.Height = 20
+        lblOpciones.Visible = False
+        Me.Controls.Add(lblOpciones)
+
+        ' CheckBox para código de plegado
+        chkCodigoPlegado = New System.Windows.Forms.CheckBox()
+        chkCodigoPlegado.Text = "Incluir rótulo COD PLEGADO"
+        chkCodigoPlegado.Top = 220
+        chkCodigoPlegado.Left = 40
+        chkCodigoPlegado.Width = 280
+        chkCodigoPlegado.Height = 25
+        chkCodigoPlegado.Checked = True
+        chkCodigoPlegado.Visible = False
+        Me.Controls.Add(chkCodigoPlegado)
 
         ' Botón Ejecutar
         Dim btnEjecutar As New System.Windows.Forms.Button()
         btnEjecutar.Text = "Ejecutar"
         btnEjecutar.Width = 90
         btnEjecutar.Height = 30
-        btnEjecutar.Top = 210
-        btnEjecutar.Left = 85
+        btnEjecutar.Top = 290
+        btnEjecutar.Left = 95
         btnEjecutar.DialogResult = System.Windows.Forms.DialogResult.OK
         Me.Controls.Add(btnEjecutar)
         Me.AcceptButton = btnEjecutar
@@ -139,17 +156,24 @@ Class FormularioSeleccionPlano
         btnCancelar.Text = "Cancelar"
         btnCancelar.Width = 90
         btnCancelar.Height = 30
-        btnCancelar.Top = 210
-        btnCancelar.Left = 185
+        btnCancelar.Top = 290
+        btnCancelar.Left = 195
         btnCancelar.DialogResult = System.Windows.Forms.DialogResult.Cancel
         Me.Controls.Add(btnCancelar)
         Me.CancelButton = btnCancelar
+    End Sub
+
+    Private Sub RadioButton_CheckedChanged(ByVal sender As Object, ByVal e As EventArgs)
+        Dim mostrarOpciones As Boolean = rbPlegado.Checked
+        lblOpciones.Visible = mostrarOpciones
+        chkCodigoPlegado.Visible = mostrarOpciones
     End Sub
 
     Protected Overrides Sub OnFormClosing(ByVal e As System.Windows.Forms.FormClosingEventArgs)
         If Me.DialogResult = System.Windows.Forms.DialogResult.OK Then
             If rbPlegado.Checked Then
                 PlanoSeleccionado = "PLEGADO"
+                IncluirCodigoPlegado = chkCodigoPlegado.Checked
             ElseIf rbPintura.Checked Then
                 PlanoSeleccionado = "PINTURA"
             ElseIf rbSoldadura.Checked Then
@@ -166,7 +190,7 @@ End Class
 ' FUNCIONES DE EJECUCIÓN DE CADA PLANO
 '---------------------------------------------------------
 
-Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry)
+Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry, ByVal incluirCodigoPlegado As Boolean)
 
     Dim RUTA_PLANTILLA_BASE As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO METALPLAK V19 -LOGO NUEVO"
     Dim RUTA_BASE_PLANOS_IDW As String = "Q:\DISEÑOS\PLANOS PRODUCCIÓN"
@@ -205,7 +229,7 @@ Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application, ByVal tg As Trans
     End If
 
     Try
-        CrearPlanoPlegadoPiezaIndividual(invApp, tg, partDoc, RUTA_PLANTILLA_BASE, RUTA_BASE_PLANOS_IDW, NOMBRE_CARPETA_SALIDA, NOMBRE_SIMBOLO_DATOS, ESCALAS, AUMENTAR_ESCALA_UN_PASO)
+        CrearPlanoPlegadoPiezaIndividual(invApp, tg, partDoc, RUTA_PLANTILLA_BASE, RUTA_BASE_PLANOS_IDW, NOMBRE_CARPETA_SALIDA, NOMBRE_SIMBOLO_DATOS, ESCALAS, AUMENTAR_ESCALA_UN_PASO, incluirCodigoPlegado)
         MessageBox.Show("Plano de plegado generado correctamente. El plano queda abierto para revision.", "Plano de plegado")
     Catch ex As Exception
         MessageBox.Show("No se ha podido generar el plano de plegado:" & vbCrLf & vbCrLf & ex.Message, "Plano de plegado")
@@ -429,7 +453,8 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
                                      ByVal nombreCarpetaSalida As String, _
                                      ByVal nombreSimboloDatos As String, _
                                      ByVal escalasDisponibles() As Double, _
-                                     ByVal aumentarEscalaUnPaso As Boolean)
+                                     ByVal aumentarEscalaUnPaso As Boolean, _
+                                     ByVal incluirCodigoPlegado As Boolean)
 
     Dim smDef As SheetMetalComponentDefinition = TryCast(partDoc.ComponentDefinition, SheetMetalComponentDefinition)
 
@@ -455,7 +480,10 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     If codPleg = "" And codAlmacen <> "" Then codPleg = codAlmacen
     If codPleg = "" Then codPleg = System.IO.Path.GetFileNameWithoutExtension(partDoc.FullFileName)
 
-    Dim codigoPlegadoManual As String = PedirCodigoPlegado(partDoc)
+    Dim codigoPlegadoManual As String = ""
+    If incluirCodigoPlegado Then
+        codigoPlegadoManual = PedirCodigoPlegado(partDoc)
+    End If
 
     Dim rutaPlantilla As String = ObtenerRutaPlantilla(rutaPlantillaBase)
 
@@ -507,6 +535,17 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     End Try
 
     drawingDoc.Update2(True)
+
+    ' Insertar rótulo COD PLEGADO si se solicitó
+    If incluirCodigoPlegado AndAlso codigoPlegadoManual <> "" Then
+        Try
+            Dim pCodigoPlegado As Point2d = tg.CreatePoint2d(ancho * 0.32, alto * 0.55)
+            InsertarRotuloCodigoPlegado(sheet, tg, pCodigoPlegado, codigoPlegadoManual)
+            drawingDoc.Update2(True)
+        Catch ex As Exception
+            ' No detener el proceso si falla la inserción del rótulo
+        End Try
+    End If
 
     Dim nombreBase As String = LimpiarNombreArchivo(codPleg)
     If nombreBase.Length > 130 Then nombreBase = nombreBase.Substring(0, 130)
@@ -1429,4 +1468,50 @@ Function FormatearEscala(ByVal escala As Double) As String
     Catch
         Return ""
     End Try
+End Function
+
+'---------------------------------------------------------
+' INSERTAR RÓTULO COD PLEG EN PLANO
+'---------------------------------------------------------
+
+Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
+                                ByVal tg As TransientGeometry, _
+                                ByVal punto As Point2d, _
+                                ByVal codigo As String)
+
+    Try
+        If sheet Is Nothing Then Exit Sub
+        If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
+
+        Dim textoFormateado As String = _
+            "<StyleOverride FontSize='0.35' Bold='False'>COD PLEG</StyleOverride>" & _
+            "<Br/>" & _
+            "<StyleOverride FontSize='0.80' Bold='False'>" & _
+            EscaparTextoInventor(Trim(codigo)) & _
+            "</StyleOverride>"
+
+        Dim nota As GeneralNote = _
+            sheet.DrawingNotes.GeneralNotes.AddFitted(punto, textoFormateado)
+
+        Try
+            nota.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
+        Catch
+        End Try
+
+    Catch ex As Exception
+        Throw New Exception("No se ha podido insertar el rotulo COD PLEG. Detalle: " & ex.Message)
+    End Try
+
+End Sub
+
+Function EscaparTextoInventor(ByVal texto As String) As String
+    If texto Is Nothing Then Return ""
+
+    texto = texto.Replace("&", "&amp;")
+    texto = texto.Replace("<", "&lt;")
+    texto = texto.Replace(">", "&gt;")
+    texto = texto.Replace("""", "&quot;")
+    texto = texto.Replace("'", "&apos;")
+
+    Return texto
 End Function
