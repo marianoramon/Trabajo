@@ -72,7 +72,6 @@ Public Class FormularioSeleccionPlano
         lblTitulo.Top = 20
         lblTitulo.Width = 350
         lblTitulo.Height = 25
-        lblTitulo.Font = New System.Drawing.Font("Arial", 11, System.Drawing.FontStyle.Bold)
         Me.Controls.Add(lblTitulo)
 
         ' RadioButtons
@@ -116,7 +115,6 @@ Public Class FormularioSeleccionPlano
         lblNota.Top = 190
         lblNota.Width = 350
         lblNota.Height = 40
-        lblNota.Font = New System.Drawing.Font("Arial", 9, System.Drawing.FontStyle.Italic)
         Me.Controls.Add(lblNota)
 
         ' Botones
