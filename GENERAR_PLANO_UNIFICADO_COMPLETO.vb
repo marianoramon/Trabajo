@@ -1212,32 +1212,29 @@ Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
         If sheet Is Nothing Then Exit Sub
         If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
 
-        ' Formato visual:
-        '   COD PLEG  -> 3,5 mm
-        '   codigo    -> 8,0 mm
-        '
-        ' Inventor expresa FontSize en centimetros.
-        Dim textoFormateado As String = _
-            "<StyleOverride FontSize='0.35' Bold='False'>COD PLEG</StyleOverride>" & _
-            "<Br/>" & _
-            "<StyleOverride FontSize='0.80' Bold='False'>" & _
-            EscaparTextoInventor(Trim(codigo)) & _
-            "</StyleOverride>"
-
-        Dim nota As GeneralNote = _
-            sheet.DrawingNotes.GeneralNotes.AddFitted( _
-                punto, _
-                textoFormateado)
+        ' Insertar etiqueta "COD PLEG"
+        Dim texto1 As String = "COD PLEG"
+        Dim nota1 As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddTextToPoint(punto, texto1)
 
         Try
-            nota.HorizontalJustification = _
-                HorizontalTextAlignmentEnum.kAlignTextCenter
+            nota1.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
+            nota1.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextBottom
+        Catch
+        End Try
+
+        ' Insertar código debajo (0.8 cm = 8 mm hacia abajo)
+        Dim puntoCodigo As Point2d = tg.CreatePoint2d(punto.X, punto.Y - 0.8)
+        Dim texto2 As String = Trim(codigo)
+        Dim nota2 As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddTextToPoint(puntoCodigo, texto2)
+
+        Try
+            nota2.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
+            nota2.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextTop
         Catch
         End Try
 
     Catch ex As Exception
-        Throw New Exception( _
-            "No se ha podido insertar el rotulo COD PLEG. Detalle: " & ex.Message)
+        ' No bloquear si falla la inserción
     End Try
 
 End Sub
