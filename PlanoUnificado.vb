@@ -904,19 +904,6 @@ Sub EscribirPropiedad(ByVal doc As Document, ByVal setName As String, ByVal prop
     End Try
 End Sub
 
-Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, ByVal value As String)
-    Try
-        Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
-        Try
-            Dim p As Inventor.Property = ps.Item(propName)
-            p.Value = value
-        Catch
-            ps.Add(value, propName)
-        End Try
-    Catch
-    End Try
-End Sub
-
 Function LimpiarNombreArchivo(ByVal nombre As String) As String
     Dim invalidos() As Char = System.IO.Path.GetInvalidFileNameChars()
     For Each c As Char In invalidos
@@ -938,19 +925,6 @@ Function LeerPropiedadUsuario(ByVal doc As Document, ByVal propName As String) A
         Return ""
     End Try
 End Function
-
-Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, ByVal value As String)
-    Try
-        Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
-        Try
-            Dim p As Inventor.Property = ps.Item(propName)
-            p.Value = value
-        Catch
-            ps.Add(value, propName)
-        End Try
-    Catch
-    End Try
-End Sub
 
 Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaPDF As String)
     Try
