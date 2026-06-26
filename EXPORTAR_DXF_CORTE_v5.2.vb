@@ -162,18 +162,22 @@ Public Class FormularioExportarDXF
         ' GroupBox Modo
         gbModo = New System.Windows.Forms.GroupBox()
         gbModo.Text = "1. Seleccionar piezas a exportar"
-        gbModo.Location = New System.Drawing.Point(15, 15)
-        gbModo.Size = New System.Drawing.Size(450, 90)
+        gbModo.Left = 15
+        gbModo.Top = 15
+        gbModo.Width = 450
+        gbModo.Height = 90
 
         rbTodas = New System.Windows.Forms.RadioButton()
         rbTodas.Text = "Todas las piezas del ensamblaje (desde BOM Solo piezas)"
-        rbTodas.Location = New System.Drawing.Point(20, 30)
+        rbTodas.Left = 20
+        rbTodas.Top = 30
         rbTodas.AutoSize = True
         rbTodas.Checked = True
 
         rbSeleccion = New System.Windows.Forms.RadioButton()
         rbSeleccion.Text = "Solo los elementos seleccionados"
-        rbSeleccion.Location = New System.Drawing.Point(20, 55)
+        rbSeleccion.Left = 20
+        rbSeleccion.Top = 55
         rbSeleccion.AutoSize = True
         rbSeleccion.Enabled = _haySeleccion
 
@@ -183,12 +187,15 @@ Public Class FormularioExportarDXF
         ' GroupBox Opciones
         gbOpciones = New System.Windows.Forms.GroupBox()
         gbOpciones.Text = "2. Opciones de exportacion"
-        gbOpciones.Location = New System.Drawing.Point(15, 115)
-        gbOpciones.Size = New System.Drawing.Size(450, 80)
+        gbOpciones.Left = 15
+        gbOpciones.Top = 115
+        gbOpciones.Width = 450
+        gbOpciones.Height = 80
 
         chkMarcas = New System.Windows.Forms.CheckBox()
         chkMarcas.Text = "Incluir marcas de plegado (3 marcas de 10 mm, margen 2 mm)"
-        chkMarcas.Location = New System.Drawing.Point(20, 30)
+        chkMarcas.Left = 20
+        chkMarcas.Top = 30
         chkMarcas.AutoSize = True
         chkMarcas.Checked = False
 
@@ -197,17 +204,20 @@ Public Class FormularioExportarDXF
         ' Ruta de salida
         lblRuta = New System.Windows.Forms.Label()
         lblRuta.Text = "3. Ruta de salida (dejar en blanco = carpeta del documento):"
-        lblRuta.Location = New System.Drawing.Point(15, 210)
+        lblRuta.Left = 15
+        lblRuta.Top = 210
         lblRuta.AutoSize = True
 
         txtRuta = New System.Windows.Forms.TextBox()
-        txtRuta.Location = New System.Drawing.Point(15, 235)
+        txtRuta.Left = 15
+        txtRuta.Top = 235
         txtRuta.Width = 380
         txtRuta.Height = 25
 
         btnExaminar = New System.Windows.Forms.Button()
         btnExaminar.Text = "Examinar..."
-        btnExaminar.Location = New System.Drawing.Point(405, 235)
+        btnExaminar.Left = 405
+        btnExaminar.Top = 235
         btnExaminar.Width = 60
         btnExaminar.Height = 25
 
@@ -215,14 +225,16 @@ Public Class FormularioExportarDXF
         btnOK = New System.Windows.Forms.Button()
         btnOK.Text = "Exportar"
         btnOK.DialogResult = System.Windows.Forms.DialogResult.OK
-        btnOK.Location = New System.Drawing.Point(310, 310)
+        btnOK.Left = 310
+        btnOK.Top = 310
         btnOK.Width = 70
         btnOK.Height = 25
 
         btnCancel = New System.Windows.Forms.Button()
         btnCancel.Text = "Cancelar"
         btnCancel.DialogResult = System.Windows.Forms.DialogResult.Cancel
-        btnCancel.Location = New System.Drawing.Point(390, 310)
+        btnCancel.Left = 390
+        btnCancel.Top = 310
         btnCancel.Width = 75
         btnCancel.Height = 25
 
@@ -240,7 +252,6 @@ Public Class FormularioExportarDXF
     End Sub
 
     Private Sub ConfigurarFormulario()
-        ' Desactivar selección si no hay elementos seleccionados
         If Not _haySeleccion Then
             rbSeleccion.Enabled = False
         End If
