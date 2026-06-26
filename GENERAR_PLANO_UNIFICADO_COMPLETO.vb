@@ -37,136 +37,130 @@ Sub Main()
 End Sub
 
 '---------------------------------------------------------
-' DIÁLOGO DE SELECCIÓN SIN SYSTEM.DRAWING.FONT
+' DIÁLOGO DE SELECCIÓN - CLASE FORM PROPIA
 '---------------------------------------------------------
 
 Function MostrarDialogoSeleccion() As String
-
-    Dim form As Object = Nothing
+    Dim form As New FormularioSeleccionPlano()
     Dim resultado As String = ""
 
     Try
-        ' Crear formulario dinámicamente sin dependencias a System.Drawing.Font
-        Dim formType As Type = Type.GetType("System.Windows.Forms.Form")
-        form = System.Activator.CreateInstance(formType)
+        If form.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
+            resultado = form.PlanoSeleccionado
+        End If
+    Catch ex As Exception
+        MessageBox.Show("Error en diálogo: " & ex.Message, "Error")
+    End Try
 
-        ' Configurar propiedades del formulario
-        form.Text = "Seleccionar Plano a Generar"
-        form.Width = 350
-        form.Height = 350
-        form.StartPosition = 1 ' CenterScreen
-        form.FormBorderStyle = 1 ' FixedDialog
-        form.MaximizeBox = False
-        form.MinimizeBox = False
+    Return resultado
+End Function
 
-        Dim panelType As Type = Type.GetType("System.Windows.Forms.Panel")
-        Dim panel As Object = System.Activator.CreateInstance(panelType)
-        panel.Dock = 5 ' Fill
-        panel.AutoScroll = False
+'---------------------------------------------------------
+' CLASE FORMULARIO PARA SELECCIÓN DE PLANO
+'---------------------------------------------------------
 
-        ' Label título
-        Dim labelTipoType As Type = Type.GetType("System.Windows.Forms.Label")
-        Dim labelTipo As Object = System.Activator.CreateInstance(labelTipoType)
-        labelTipo.Text = "Elige el tipo de plano:"
-        labelTipo.Top = 15
-        labelTipo.Left = 20
-        labelTipo.Width = 300
-        labelTipo.Height = 25
+Class FormularioSeleccionPlano
+    Inherits System.Windows.Forms.Form
 
-        Dim radioButtonType As Type = Type.GetType("System.Windows.Forms.RadioButton")
+    Public PlanoSeleccionado As String = ""
+    Private rbPlegado As System.Windows.Forms.RadioButton
+    Private rbPintura As System.Windows.Forms.RadioButton
+    Private rbSoldadura As System.Windows.Forms.RadioButton
+    Private rbDespiece As System.Windows.Forms.RadioButton
+
+    Sub New()
+        Me.Text = "Seleccionar Plano a Generar"
+        Me.Width = 350
+        Me.Height = 350
+        Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
+        Me.MaximizeBox = False
+        Me.MinimizeBox = False
+
+        ' Crear etiqueta título
+        Dim lblTitulo As New System.Windows.Forms.Label()
+        lblTitulo.Text = "Elige el tipo de plano:"
+        lblTitulo.Top = 15
+        lblTitulo.Left = 20
+        lblTitulo.Width = 300
+        lblTitulo.Height = 25
+        Me.Controls.Add(lblTitulo)
 
         ' RadioButton PLEGADO
-        Dim rbPlegado As Object = System.Activator.CreateInstance(radioButtonType)
+        rbPlegado = New System.Windows.Forms.RadioButton()
         rbPlegado.Text = "Plano de Plegado"
         rbPlegado.Top = 50
         rbPlegado.Left = 30
         rbPlegado.Width = 280
         rbPlegado.Height = 25
-        rbPlegado.Tag = "PLEGADO"
+        Me.Controls.Add(rbPlegado)
 
         ' RadioButton PINTURA
-        Dim rbPintura As Object = System.Activator.CreateInstance(radioButtonType)
+        rbPintura = New System.Windows.Forms.RadioButton()
         rbPintura.Text = "Plano de Pintura RAL"
         rbPintura.Top = 85
         rbPintura.Left = 30
         rbPintura.Width = 280
         rbPintura.Height = 25
-        rbPintura.Tag = "PINTURA"
+        Me.Controls.Add(rbPintura)
 
         ' RadioButton SOLDADURA
-        Dim rbSoldadura As Object = System.Activator.CreateInstance(radioButtonType)
+        rbSoldadura = New System.Windows.Forms.RadioButton()
         rbSoldadura.Text = "Plano de Soldadura"
         rbSoldadura.Top = 120
         rbSoldadura.Left = 30
         rbSoldadura.Width = 280
         rbSoldadura.Height = 25
-        rbSoldadura.Tag = "SOLDADURA"
+        Me.Controls.Add(rbSoldadura)
 
         ' RadioButton DESPIECE
-        Dim rbDespiece As Object = System.Activator.CreateInstance(radioButtonType)
+        rbDespiece = New System.Windows.Forms.RadioButton()
         rbDespiece.Text = "Despiece Visual"
         rbDespiece.Top = 155
         rbDespiece.Left = 30
         rbDespiece.Width = 280
         rbDespiece.Height = 25
-        rbDespiece.Tag = "DESPIECE"
-        rbDespiece.Checked = True ' Seleccionado por defecto
+        rbDespiece.Checked = True
+        Me.Controls.Add(rbDespiece)
 
         ' Botón Ejecutar
-        Dim buttonType As Type = Type.GetType("System.Windows.Forms.Button")
-        Dim btnEjecutar As Object = System.Activator.CreateInstance(buttonType)
+        Dim btnEjecutar As New System.Windows.Forms.Button()
         btnEjecutar.Text = "Ejecutar"
         btnEjecutar.Width = 90
         btnEjecutar.Height = 30
         btnEjecutar.Top = 210
         btnEjecutar.Left = 85
-        btnEjecutar.DialogResult = 1 ' OK
+        btnEjecutar.DialogResult = System.Windows.Forms.DialogResult.OK
+        Me.Controls.Add(btnEjecutar)
+        Me.AcceptButton = btnEjecutar
 
         ' Botón Cancelar
-        Dim btnCancelar As Object = System.Activator.CreateInstance(buttonType)
+        Dim btnCancelar As New System.Windows.Forms.Button()
         btnCancelar.Text = "Cancelar"
         btnCancelar.Width = 90
         btnCancelar.Height = 30
         btnCancelar.Top = 210
         btnCancelar.Left = 185
-        btnCancelar.DialogResult = 2 ' Cancel
+        btnCancelar.DialogResult = System.Windows.Forms.DialogResult.Cancel
+        Me.Controls.Add(btnCancelar)
+        Me.CancelButton = btnCancelar
+    End Sub
 
-        ' Añadir controles al formulario
-        form.Controls.Add(labelTipo)
-        form.Controls.Add(rbPlegado)
-        form.Controls.Add(rbPintura)
-        form.Controls.Add(rbSoldadura)
-        form.Controls.Add(rbDespiece)
-        form.Controls.Add(btnEjecutar)
-        form.Controls.Add(btnCancelar)
-
-        form.AcceptButton = btnEjecutar
-        form.CancelButton = btnCancelar
-
-        ' Mostrar diálogo
-        Dim dlgResult As Integer = form.ShowDialog()
-
-        If dlgResult = 1 Then ' OK
-            If rbPlegado.Checked Then resultado = "PLEGADO"
-            If rbPintura.Checked Then resultado = "PINTURA"
-            If rbSoldadura.Checked Then resultado = "SOLDADURA"
-            If rbDespiece.Checked Then resultado = "DESPIECE"
+    Protected Overrides Sub OnFormClosing(ByVal e As System.Windows.Forms.FormClosingEventArgs)
+        If Me.DialogResult = System.Windows.Forms.DialogResult.OK Then
+            If rbPlegado.Checked Then
+                PlanoSeleccionado = "PLEGADO"
+            ElseIf rbPintura.Checked Then
+                PlanoSeleccionado = "PINTURA"
+            ElseIf rbSoldadura.Checked Then
+                PlanoSeleccionado = "SOLDADURA"
+            ElseIf rbDespiece.Checked Then
+                PlanoSeleccionado = "DESPIECE"
+            End If
         End If
-
-    Catch ex As Exception
-        MessageBox.Show("Error en diálogo: " & ex.Message, "Error")
-    Finally
-        If form IsNot Nothing Then
-            Try
-                form.Dispose()
-            Catch
-            End Try
-        End If
-    End Try
-
-    Return resultado
-
-End Function
+        MyBase.OnFormClosing(e)
+    End Sub
+End Class
 
 '---------------------------------------------------------
 ' FUNCIONES DE EJECUCIÓN DE CADA PLANO
