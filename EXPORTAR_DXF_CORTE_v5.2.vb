@@ -233,7 +233,6 @@ Public Class FormularioExportarDXF
         lblPorCodigo.Left = 40
         lblPorCodigo.Top = 55
         lblPorCodigo.AutoSize = True
-        lblPorCodigo.ForeColor = System.Drawing.Color.Gray
 
         rbRutaPersonalizada = New System.Windows.Forms.RadioButton()
         rbRutaPersonalizada.Text = "Guardar en carpeta del ensamblaje (01_DXF_CORTE)"
