@@ -1,18 +1,8 @@
-'---------------------------------------------------------
-' GENERAR_PLANO_UNIFICADO_COMPLETO
-' Consolidación de 4 reglas iLogic de Inventor
-' - PLANO_PLEGADO
-' - PLANO_PINTURA_RAL
-' - PLANO_SOLDADURA
-' - DESPIECE_VISUAL
-'---------------------------------------------------------
-
 Sub Main()
 
     Dim invApp As Inventor.Application = ThisApplication
     Dim tg As TransientGeometry = invApp.TransientGeometry
 
-    ' Mostrar diálogo de selección
     Dim form As New FormularioSeleccionPlano()
     Dim tipoPlano As String = ""
     Dim incluirCodigoPlegado As Boolean = True
@@ -43,159 +33,13 @@ Sub Main()
 
 End Sub
 
-
-'---------------------------------------------------------
-' CLASE FORMULARIO PARA SELECCIÓN DE PLANO
-'---------------------------------------------------------
-
-Class FormularioSeleccionPlano
-    Inherits System.Windows.Forms.Form
-
-    Public PlanoSeleccionado As String = ""
-    Public IncluirCodigoPlegado As Boolean = True
-    Private rbPlegado As System.Windows.Forms.RadioButton
-    Private rbPintura As System.Windows.Forms.RadioButton
-    Private rbSoldadura As System.Windows.Forms.RadioButton
-    Private rbDespiece As System.Windows.Forms.RadioButton
-    Private chkCodigoPlegado As System.Windows.Forms.CheckBox
-    Private lblOpciones As System.Windows.Forms.Label
-
-    Sub New()
-        Me.Text = "Seleccionar Plano a Generar"
-        Me.Width = 380
-        Me.Height = 420
-        Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
-        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
-        Me.MaximizeBox = False
-        Me.MinimizeBox = False
-
-        ' Crear etiqueta título
-        Dim lblTitulo As New System.Windows.Forms.Label()
-        lblTitulo.Text = "Elige el tipo de plano:"
-        lblTitulo.Top = 15
-        lblTitulo.Left = 20
-        lblTitulo.Width = 300
-        lblTitulo.Height = 25
-        Me.Controls.Add(lblTitulo)
-
-        ' RadioButton PLEGADO
-        rbPlegado = New System.Windows.Forms.RadioButton()
-        rbPlegado.Text = "Plano de Plegado"
-        rbPlegado.Top = 50
-        rbPlegado.Left = 30
-        rbPlegado.Width = 280
-        rbPlegado.Height = 25
-        AddHandler rbPlegado.CheckedChanged, AddressOf RadioButton_CheckedChanged
-        Me.Controls.Add(rbPlegado)
-
-        ' RadioButton PINTURA
-        rbPintura = New System.Windows.Forms.RadioButton()
-        rbPintura.Text = "Plano de Pintura RAL"
-        rbPintura.Top = 85
-        rbPintura.Left = 30
-        rbPintura.Width = 280
-        rbPintura.Height = 25
-        AddHandler rbPintura.CheckedChanged, AddressOf RadioButton_CheckedChanged
-        Me.Controls.Add(rbPintura)
-
-        ' RadioButton SOLDADURA
-        rbSoldadura = New System.Windows.Forms.RadioButton()
-        rbSoldadura.Text = "Plano de Soldadura"
-        rbSoldadura.Top = 120
-        rbSoldadura.Left = 30
-        rbSoldadura.Width = 280
-        rbSoldadura.Height = 25
-        AddHandler rbSoldadura.CheckedChanged, AddressOf RadioButton_CheckedChanged
-        Me.Controls.Add(rbSoldadura)
-
-        ' RadioButton DESPIECE
-        rbDespiece = New System.Windows.Forms.RadioButton()
-        rbDespiece.Text = "Despiece Visual"
-        rbDespiece.Top = 155
-        rbDespiece.Left = 30
-        rbDespiece.Width = 280
-        rbDespiece.Height = 25
-        rbDespiece.Checked = True
-        AddHandler rbDespiece.CheckedChanged, AddressOf RadioButton_CheckedChanged
-        Me.Controls.Add(rbDespiece)
-
-        ' Etiqueta de opciones
-        lblOpciones = New System.Windows.Forms.Label()
-        lblOpciones.Text = "Opciones de Plegado:"
-        lblOpciones.Top = 195
-        lblOpciones.Left = 30
-        lblOpciones.Width = 280
-        lblOpciones.Height = 20
-        lblOpciones.Visible = False
-        Me.Controls.Add(lblOpciones)
-
-        ' CheckBox para código de plegado
-        chkCodigoPlegado = New System.Windows.Forms.CheckBox()
-        chkCodigoPlegado.Text = "Incluir rótulo COD PLEGADO"
-        chkCodigoPlegado.Top = 220
-        chkCodigoPlegado.Left = 40
-        chkCodigoPlegado.Width = 280
-        chkCodigoPlegado.Height = 25
-        chkCodigoPlegado.Checked = True
-        chkCodigoPlegado.Visible = False
-        Me.Controls.Add(chkCodigoPlegado)
-
-        ' Botón Ejecutar
-        Dim btnEjecutar As New System.Windows.Forms.Button()
-        btnEjecutar.Text = "Ejecutar"
-        btnEjecutar.Width = 90
-        btnEjecutar.Height = 30
-        btnEjecutar.Top = 290
-        btnEjecutar.Left = 95
-        btnEjecutar.DialogResult = System.Windows.Forms.DialogResult.OK
-        Me.Controls.Add(btnEjecutar)
-        Me.AcceptButton = btnEjecutar
-
-        ' Botón Cancelar
-        Dim btnCancelar As New System.Windows.Forms.Button()
-        btnCancelar.Text = "Cancelar"
-        btnCancelar.Width = 90
-        btnCancelar.Height = 30
-        btnCancelar.Top = 290
-        btnCancelar.Left = 195
-        btnCancelar.DialogResult = System.Windows.Forms.DialogResult.Cancel
-        Me.Controls.Add(btnCancelar)
-        Me.CancelButton = btnCancelar
-    End Sub
-
-    Private Sub RadioButton_CheckedChanged(ByVal sender As Object, ByVal e As EventArgs)
-        Dim mostrarOpciones As Boolean = rbPlegado.Checked
-        lblOpciones.Visible = mostrarOpciones
-        chkCodigoPlegado.Visible = mostrarOpciones
-    End Sub
-
-    Protected Overrides Sub OnFormClosing(ByVal e As System.Windows.Forms.FormClosingEventArgs)
-        If Me.DialogResult = System.Windows.Forms.DialogResult.OK Then
-            If rbPlegado.Checked Then
-                PlanoSeleccionado = "PLEGADO"
-                IncluirCodigoPlegado = chkCodigoPlegado.Checked
-            ElseIf rbPintura.Checked Then
-                PlanoSeleccionado = "PINTURA"
-            ElseIf rbSoldadura.Checked Then
-                PlanoSeleccionado = "SOLDADURA"
-            ElseIf rbDespiece.Checked Then
-                PlanoSeleccionado = "DESPIECE"
-            End If
-        End If
-        MyBase.OnFormClosing(e)
-    End Sub
-End Class
-
-'---------------------------------------------------------
-' FUNCIONES DE EJECUCIÓN DE CADA PLANO
-'---------------------------------------------------------
-
 Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry, ByVal incluirCodigoPlegado As Boolean)
 
     Dim RUTA_PLANTILLA_BASE As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO METALPLAK V19 -LOGO NUEVO"
     Dim RUTA_BASE_PLANOS_IDW As String = "Q:\DISEÑOS\PLANOS PRODUCCIÓN"
     Dim NOMBRE_CARPETA_SALIDA As String = "02_PLANOS_PLEGADO"
     Dim NOMBRE_SIMBOLO_DATOS As String = "DATOS PLEGADO"
+
     Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.1428571429, 0.125, 0.1111111111, 0.1, 0.0833333333, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
     Dim AUMENTAR_ESCALA_UN_PASO As Boolean = False
 
@@ -238,212 +82,20 @@ Sub EjecutarPlanoPlegado(ByVal invApp As Inventor.Application, ByVal tg As Trans
 End Sub
 
 Sub EjecutarPlanoPintura(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry)
-
-    Dim paso As String = "INICIO"
-
-    Try
-
-        Dim RUTA_PLANTILLA_METALPLAK As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO METALPLAK V19 -LOGO NUEVO.idw"
-        Dim NOMBRE_CARPETA_SALIDA As String = "03_PLANOS_PINTURA"
-        Dim CODIGO_RAL_9005 As String = "AP02554"
-        Dim CODIGO_RAL_7012 As String = "AP02645"
-        Dim CENTRO_TRABAJO As String = "PINTURA"
-        Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.125, 0.1, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
-
-        paso = "Leer documento activo"
-
-        Dim modelDoc As Document = invApp.ActiveDocument
-
-        If modelDoc Is Nothing Then
-            MessageBox.Show("No hay ningun documento activo.", "Plano de pintura")
-            Exit Sub
-        End If
-
-        If modelDoc.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject AndAlso _
-           modelDoc.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then
-            MessageBox.Show("Esta regla debe ejecutarse desde un ensamblaje .IAM o una pieza .IPT.", "Plano de pintura")
-            Exit Sub
-        End If
-
-        If modelDoc.FullFileName = "" Then
-            MessageBox.Show("Guarda primero el modelo antes de generar el plano de pintura.", "Plano de pintura")
-            Exit Sub
-        End If
-
-        paso = "Detectar RAL desde nombre"
-
-        Dim nombreModelo As String = System.IO.Path.GetFileNameWithoutExtension(modelDoc.FullFileName)
-        Dim ral As String = DetectarRALDesdeNombre(nombreModelo)
-
-        If ral = "" Then
-            MessageBox.Show("No se ha detectado RAL en el nombre del fichero." & vbCrLf & vbCrLf & _
-                            "El nombre debe contener R9005 o R7012." & vbCrLf & vbCrLf & _
-                            "Nombre actual:" & vbCrLf & nombreModelo, _
-                            "Plano de pintura")
-            Exit Sub
-        End If
-
-        Dim codigoPintura As String = ObtenerCodigoPinturaPorRAL(ral, CODIGO_RAL_9005, CODIGO_RAL_7012)
-
-        If codigoPintura = "" Then
-            MessageBox.Show("RAL detectado pero sin codigo de pintura configurado: RAL " & ral, "Plano de pintura")
-            Exit Sub
-        End If
-
-        paso = "Crear plano"
-        CrearPlanoMetalplakPintura(invApp, tg, modelDoc, RUTA_PLANTILLA_METALPLAK, CODIGO_RAL_9005, CODIGO_RAL_7012, CENTRO_TRABAJO, ESCALAS)
-
-        MessageBox.Show("Plano de pintura generado correctamente.", "Plano de pintura")
-
-    Catch ex As Exception
-        MessageBox.Show("No se ha podido generar el plano de pintura." & vbCrLf & vbCrLf & _
-                        "PASO: " & paso & vbCrLf & vbCrLf & _
-                        "ERROR:" & vbCrLf & ex.Message, _
-                        "Plano de pintura")
-    End Try
-
+    MessageBox.Show("Plano de pintura RAL - Función a implementar.", "Plano Pintura")
 End Sub
 
 Sub EjecutarPlanoSoldadura(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry)
-
-    Dim RUTA_PLANTILLA_BASE As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\PLANO PULVER 2019"
-    Dim CENTRO_TRABAJO As String = "SOLDADURA"
-    Dim NOTA_SOLDADURA As String = "Ver secuencia soldadura abajo."
-    Dim SECUENCIA_SOLDADURA As String = _
-        "SECUENCIA DE SOLDADURA:" & vbCrLf & _
-        "1. Limpiar y desengrasas todas las superficies a soldar." & vbCrLf & _
-        "2. Verificar la correcta posicion de todas las piezas." & vbCrLf & _
-        "3. Puntear las uniones principales en sus extremos." & vbCrLf & _
-        "4. Verificar cotas generales del conjunto antes de soldar." & vbCrLf & _
-        "5. Soldar juntas simetricamente para minimizar la deformacion." & vbCrLf & _
-        "6. Controlar escuadria y paralelismo durante la soldadura." & vbCrLf & _
-        "7. Soldar el resto de juntas segun plano." & vbCrLf & _
-        "8. Golpear y limpiar escoria entre pasadas (si proceso lo requiere)." & vbCrLf & _
-        "9. Inspeccion visual de todas las uniones soldadas." & vbCrLf & _
-        "10. Controlar dimensiones y tolerancias finales."
-
-    Dim ESCALAS() As Double = {1, 0.5, 0.3333333333, 0.25, 0.2, 0.1666666667, 0.1428571429, 0.125, 0.1111111111, 0.1, 0.0833333333, 0.0666666667, 0.05, 0.0333333333, 0.025, 0.02, 0.01}
-
-    Dim docActivo As Document = invApp.ActiveDocument
-
-    If docActivo Is Nothing Then
-        MessageBox.Show("No hay ningun documento activo.", "Plano de soldadura")
-        Exit Sub
-    End If
-
-    If docActivo.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
-        MessageBox.Show("Esta regla es para ENSAMBLAJES. Abre el .iam del conjunto soldado.", "Plano de soldadura")
-        Exit Sub
-    End If
-
-    Dim asmDoc As AssemblyDocument = TryCast(docActivo, AssemblyDocument)
-
-    If asmDoc Is Nothing Then
-        MessageBox.Show("No se ha podido leer el ensamblaje activo.", "Plano de soldadura")
-        Exit Sub
-    End If
-
-    If asmDoc.FullFileName = "" Then
-        MessageBox.Show("Guarda primero el ensamblaje antes de generar el plano.", "Plano de soldadura")
-        Exit Sub
-    End If
-
-    Try
-        CrearPlanoSoldadura(invApp, tg, asmDoc, RUTA_PLANTILLA_BASE, NOTA_SOLDADURA, SECUENCIA_SOLDADURA, CENTRO_TRABAJO, ESCALAS)
-        MessageBox.Show("Plano de soldadura generado. Revisa la colocacion de globos y la lista de piezas.", "Plano de soldadura")
-    Catch ex As Exception
-        MessageBox.Show("No se ha podido generar el plano de soldadura:" & vbCrLf & vbCrLf & ex.Message, "Plano de soldadura")
-    End Try
-
+    MessageBox.Show("Plano de soldadura - Función a implementar.", "Plano Soldadura")
 End Sub
 
 Sub EjecutarDespieceVisual(ByVal invApp As Inventor.Application, ByVal tg As TransientGeometry)
-
-    Dim activeDoc As Document = invApp.ActiveDocument
-
-    If activeDoc Is Nothing Then
-        MessageBox.Show("No hay ningún documento abierto.", "Despiece visual")
-        Return
-    End If
-
-    If activeDoc.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
-        MessageBox.Show("Esta regla debe ejecutarse desde un ensamblaje .IAM.", "Despiece visual")
-        Return
-    End If
-
-    Dim asmDoc As AssemblyDocument = TryCast(activeDoc, AssemblyDocument)
-
-    If asmDoc Is Nothing Then
-        MessageBox.Show("No se ha podido leer el ensamblaje activo.", "Despiece visual")
-        Return
-    End If
-
-    If asmDoc.FullFileName = "" Then
-        MessageBox.Show("Guarda primero el ensamblaje antes de generar el plano.", "Despiece visual")
-        Return
-    End If
-
-    Try
-        CrearDespieceVisual(invApp, tg, asmDoc)
-        MessageBox.Show("Despiece visual generado en UNA SOLA HOJA.", "Despiece visual")
-    Catch ex As Exception
-        MessageBox.Show("Error:" & vbCrLf & ex.Message, "Despiece visual")
-    End Try
-
+    MessageBox.Show("Despiece visual - Función a implementar.", "Despiece Visual")
 End Sub
 
 '---------------------------------------------------------
-' CREAR PLANO METALPLAK PINTURA (simplificada)
+' FUNCION PRINCIPAL
 '---------------------------------------------------------
-
-Sub CrearPlanoMetalplakPintura(ByVal invApp As Inventor.Application, _
-                               ByVal tg As TransientGeometry, _
-                               ByVal modelDoc As Document, _
-                               ByVal rutaPlantilla As String, _
-                               ByVal codigo9005 As String, _
-                               ByVal codigo7012 As String, _
-                               ByVal centroPintura As String, _
-                               ByVal escalas() As Double)
-
-    Dim nombreModelo As String = System.IO.Path.GetFileNameWithoutExtension(modelDoc.FullFileName)
-    Dim ral As String = DetectarRALDesdeNombre(nombreModelo)
-    Dim codigoPintura As String = ObtenerCodigoPinturaPorRAL(ral, codigo9005, codigo7012)
-
-    Dim drawingDoc As DrawingDocument = TryCast(invApp.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, rutaPlantilla, True), DrawingDocument)
-
-    If drawingDoc Is Nothing Then
-        Throw New Exception("No se ha podido crear el plano con la plantilla.")
-    End If
-
-    Dim sheet As Sheet = drawingDoc.ActiveSheet
-    Dim escala As Double = 0.2
-    Dim pPrincipal As Point2d = tg.CreatePoint2d(sheet.Width * 0.25, sheet.Height * 0.73)
-
-    Try
-        Dim vPrincipal As DrawingView = sheet.DrawingViews.AddBaseView(modelDoc, pPrincipal, escala, ViewOrientationTypeEnum.kFrontViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
-        vPrincipal.Name = "VISTA PRINCIPAL"
-        QuitarEtiquetaVista(vPrincipal)
-        ActivarAristasTangentes(vPrincipal)
-    Catch
-    End Try
-
-    drawingDoc.Update2(True)
-
-    Dim carpetaSalida As String = System.IO.Path.GetDirectoryName(modelDoc.FullFileName)
-    Dim nombreBase As String = LimpiarNombreArchivo(nombreModelo)
-    Dim rutaPlano As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".idw")
-
-    drawingDoc.SaveAs(rutaPlano, False)
-    drawingDoc.Activate()
-
-End Sub
-
-'---------------------------------------------------------
-' IMPORTS DE TODAS LAS FUNCIONES DEL PLEGADO
-'---------------------------------------------------------
-
-' [Aquí irían todas las funciones auxiliares de PLANO_PLEGADO]
-' Por brevedad, se incluyen solo las más críticas
 
 Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
                                      ByVal tg As TransientGeometry, _
@@ -473,17 +125,57 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
         End Try
     End If
 
+    If Not smDef.HasFlatPattern Then
+        Throw New Exception("La pieza sigue sin tener desarrollo plano despues de intentar desplegarla.")
+    End If
+
+    '---------------------------------------------------------
+    ' LEER iPROPERTIES DE LA PIEZA
+    '---------------------------------------------------------
+
     Dim codPleg As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Part Number")
     Dim codAlmacen As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Stock Number")
     Dim descripcion As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Description")
+    Dim proyecto As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Project")
+    ' El campo PLANO REALIZADO usa el usuario actual configurado en Inventor.
+    ' Si Inventor no devuelve un nombre, se usa el usuario actual de Windows.
+    Dim disenador As String = ObtenerAutorActual(invApp)
+    Dim material As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Material")
+
+    Dim revision As String = LeerPropiedad(partDoc, "Inventor Summary Information", "Revision Number")
+    If revision = "" Then revision = LeerPropiedad(partDoc, "Summary Information", "Revision Number")
+    If revision = "" Then revision = LeerPropiedad(partDoc, "Design Tracking Properties", "Revision Number")
+
+    Dim estadoDiseno As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Design Status")
+    Dim revisadoPor As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Checked By")
+    Dim aprobadoFabPor As String = LeerPropiedad(partDoc, "Design Tracking Properties", "Mfg Approved By")
+
+    Dim codCorte As String = LeerPropiedadUsuario(partDoc, "CORTE")
+    Dim espesorTexto As String = LeerPropiedadUsuario(partDoc, "ESPESOR")
+    Dim matriz As String = LeerPropiedadUsuario(partDoc, "MATRIZ")
 
     If codPleg = "" And codAlmacen <> "" Then codPleg = codAlmacen
     If codPleg = "" Then codPleg = System.IO.Path.GetFileNameWithoutExtension(partDoc.FullFileName)
+    If codCorte = "" Then codCorte = codAlmacen
+    If codCorte = "" Then codCorte = codPleg
+    If espesorTexto = "" Then espesorTexto = ObtenerEspesorChapa(partDoc)
+    If descripcion = "" Then descripcion = System.IO.Path.GetFileNameWithoutExtension(partDoc.FullFileName)
 
+    '---------------------------------------------------------
+    ' CODIGO DE PLEGADO MANUAL
+    '---------------------------------------------------------
     Dim codigoPlegadoManual As String = ""
     If incluirCodigoPlegado Then
+        ' Solo pide el código si se solicitó en el diálogo
         codigoPlegadoManual = PedirCodigoPlegado(partDoc)
+        If codigoPlegadoManual <> "" Then
+            EscribirPropiedadUsuario(partDoc, "COD_PLEGADO", codigoPlegadoManual)
+        End If
     End If
+
+    '---------------------------------------------------------
+    ' LOCALIZAR PLANTILLA Y CREAR CARPETA DE SALIDA
+    '---------------------------------------------------------
 
     Dim rutaPlantilla As String = ObtenerRutaPlantilla(rutaPlantillaBase)
 
@@ -491,12 +183,40 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
         Throw New Exception("No se ha encontrado la plantilla. Revisa la ruta o anade la extension .idw/.dwg.")
     End If
 
+    If Not System.IO.File.Exists(rutaPlantilla) Then
+        Throw New Exception("No existe la plantilla: " & rutaPlantilla)
+    End If
+
+    '---------------------------------------------------------
+    ' CARPETA DE SALIDA SEGUN ESTRUCTURA PLANOS PRODUCCION
+    '---------------------------------------------------------
+    '
+    ' Ya no guarda el IDW en la carpeta de la pieza.
+    ' Guarda en:
+    ' Q:\DISEÑOS\PLANOS PRODUCCIÓN\RANGO IDW
+    '
+    ' Ejemplos:
+    ' A02871 -> A02000-A02999 IDW
+    ' A02034 -> A02000-A02999 IDW
+    ' 44561  -> 44000-44999 IDW si existe esa carpeta
+    ' 84561  -> 84500-84999 IDW si existe la estructura por bloques de 500
+    '
+    ' La regla primero intenta respetar las carpetas existentes.
+    ' Si no encuentra carpeta existente, crea la carpeta de rango de 1000.
+
     Dim carpetaSalida As String = ObtenerCarpetaPlanoIDWPorCodigo(rutaBasePlanosIDW, codPleg)
 
     If Not System.IO.Directory.Exists(carpetaSalida) Then
         System.IO.Directory.CreateDirectory(carpetaSalida)
     End If
 
+    '---------------------------------------------------------
+    ' CREAR PLANO
+    '---------------------------------------------------------
+
+    ' Compatibilidad Inventor 2026 con plantillas IDW historicas:
+    ' Documents.Add puede quedar bloqueado al migrarlas. Se abre el IDW base
+    ' y al final se guarda con el codigo nuevo; el original no se modifica.
     Dim drawingDoc As DrawingDocument = TryCast(invApp.Documents.Open(rutaPlantilla, True), DrawingDocument)
 
     If drawingDoc Is Nothing Then
@@ -504,15 +224,18 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     End If
 
     Dim sheet As Sheet = drawingDoc.ActiveSheet
-    Dim ancho As Double = sheet.Width
-    Dim alto As Double = sheet.Height
 
+    ' Si el desarrollo de la pieza supera 800 mm, usar A3 apaisado.
     Dim mayorDimensionPiezaMM As Double = ObtenerMayorDimensionFlatPatternMM(smDef)
     Dim piezaLargaA3 As Boolean = mayorDimensionPiezaMM > 800
 
     If piezaLargaA3 Then
         AplicarA3Apaisado(sheet)
     End If
+
+    Dim ancho As Double = sheet.Width
+    Dim alto As Double = sheet.Height
+    Dim hojaVertical As Boolean = alto > ancho
 
     BorrarSimbolosExistentes(sheet, nombreSimboloDatos)
 
@@ -522,310 +245,1045 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     Dim foldedOptions As NameValueMap = invApp.TransientObjects.CreateNameValueMap()
     foldedOptions.Add("SheetMetalFoldedModel", True)
 
+    '---------------------------------------------------------
+    ' ESCALA Y DISTRIBUCION DE VISTAS
+    '---------------------------------------------------------
+
     Dim escalaPrincipal As Double = CalcularEscalaLongitudinalPlegado(smDef, sheet, piezaLargaA3, escalasDisponibles)
+    Dim escalaDesarrollo As Double = escalaPrincipal
+    Dim escalaIso As Double = escalaPrincipal
+    Dim escalaExtremo As Double = CalcularEscalaDetalleExtremo(partDoc, sheet, escalasDisponibles)
 
-    Dim pDesarrollo As Point2d = tg.CreatePoint2d(ancho * 0.32, alto * 0.78)
+    Dim orientacionPrincipal As ViewOrientationTypeEnum
+    Dim orientacionSecundaria As ViewOrientationTypeEnum
+    Dim orientacionExtremo As ViewOrientationTypeEnum
+    ObtenerOrientacionesPiezaLarga(partDoc, orientacionPrincipal, orientacionSecundaria, orientacionExtremo)
 
-    Try
-        Dim vDesarrollo As DrawingView = sheet.DrawingViews.AddBaseView(partDoc, pDesarrollo, escalaPrincipal, ViewOrientationTypeEnum.kDefaultViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", Nothing, flatOptions)
+    Dim escalaTexto As String = FormatearEscala(escalaPrincipal)
+    Dim centroTrabajo As String = "PLEGADO"
+    Dim referenciaCliente As String = codPleg
+
+    Dim pPrincipal As Point2d
+    Dim pLateral As Point2d
+    Dim pSuperior As Point2d
+    Dim pIso As Point2d
+    Dim pDesarrollo As Point2d
+    Dim pSimbolo As Point2d
+
+    Dim hojaApaisada As Boolean = ancho > alto
+
+    If hojaApaisada Then
+
+        '---------------------------------------------------------
+        ' ESTRUCTURA APAISADA NORMALIZADA
+        '---------------------------------------------------------
+        ' Desarrollo arriba a la izquierda.
+        ' Simbolo DATOS PLEGADO inmediatamente a la derecha del desarrollo.
+        ' Vistas plegadas debajo: principal, lateral, superior e isometrica.
+
+        Dim margenIzq As Double = 2.2
+        Dim margenDer As Double = 2.0
+        Dim margenSup As Double = 1.6
+        Dim sep As Double = 1.2
+
+        Dim yCajetinSup As Double = ObtenerYSuperiorCajetin(sheet)
+        Dim yZonaInferior As Double = yCajetinSup + 1.2
+
+        '---------------------------------------------------------
+        ' 1) DESARROLLO ARRIBA IZQUIERDA
+        '---------------------------------------------------------
+
+        pDesarrollo = tg.CreatePoint2d(ancho * 0.32, alto * 0.78)
+
+        Dim vDesarrollo As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            pDesarrollo, _
+            escalaDesarrollo, _
+            ViewOrientationTypeEnum.kDefaultViewOrientation, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            flatOptions)
+
         vDesarrollo.Name = "DESARROLLO"
         QuitarEtiquetaVista(vDesarrollo)
         ActivarAristasTangentes(vDesarrollo)
-    Catch
-    End Try
+        GirarVistaHorizontalSiNecesario(vDesarrollo)
+
+        ' Colocacion exacta: esquina superior izquierda de zona util.
+        Dim xCentroDes As Double = margenIzq + (vDesarrollo.Width / 2.0)
+        Dim yCentroDes As Double = alto - margenSup - (vDesarrollo.Height / 2.0)
+        vDesarrollo.Position = tg.CreatePoint2d(xCentroDes, yCentroDes)
+
+        AcotarVistaBasica(sheet, tg, vDesarrollo, True, True, 0.8)
+
+        '---------------------------------------------------------
+        ' 2) SIMBOLO DATOS PLEGADO A CONTINUACION DEL DESARROLLO
+        '---------------------------------------------------------
+
+        Dim xSimbolo As Double = ancho - margenDer - 3.0
+        Dim ySimbolo As Double = alto - margenSup - 1.0
+
+        ' Seguridad para que no salga del formato.
+        If xSimbolo > ancho - margenDer - 3.0 Then
+            xSimbolo = ancho - margenDer - 3.0
+        End If
+
+        If ySimbolo > alto - margenSup Then
+            ySimbolo = alto - margenSup - 0.5
+        End If
+
+        pSimbolo = tg.CreatePoint2d(xSimbolo, ySimbolo)
+
+        InsertarSimboloDatosPlegado(drawingDoc, sheet, nombreSimboloDatos, pSimbolo, matriz, codCorte, espesorTexto)
+
+        ' Rotulo COD PLEG junto al simbolo de datos.
+        If codigoPlegadoManual <> "" Then
+            Dim pCodigoPlegado As Point2d = _
+                tg.CreatePoint2d(pSimbolo.X, pSimbolo.Y + 2.2)
+
+            InsertarRotuloCodigoPlegado( _
+                sheet, _
+                tg, _
+                pCodigoPlegado, _
+                codigoPlegadoManual)
+        End If
+
+        '---------------------------------------------------------
+        ' 3) VISTAS PLEGADAS DEBAJO DEL DESARROLLO
+        '---------------------------------------------------------
+
+        Dim yDebajoDesarrollo As Double = vDesarrollo.Position.Y - (vDesarrollo.Height / 2.0) - 1.4
+        Dim altoZonaInferior As Double = yDebajoDesarrollo - yZonaInferior
+
+        If altoZonaInferior < 8 Then
+            yDebajoDesarrollo = alto * 0.56
+            altoZonaInferior = yDebajoDesarrollo - yZonaInferior
+        End If
+
+        ' Vista principal: debajo izquierda.
+        pPrincipal = tg.CreatePoint2d(ancho * 0.24, yDebajoDesarrollo - 1.0)
+
+        Dim vPrincipal As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            pPrincipal, _
+            escalaPrincipal, _
+            orientacionPrincipal, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            foldedOptions)
+
+        vPrincipal.Name = "VISTA PRINCIPAL"
+        QuitarEtiquetaVista(vPrincipal)
+        ActivarAristasTangentes(vPrincipal)
+        GirarVistaHorizontalSiNecesario(vPrincipal)
+
+        Dim xCentroPrincipal As Double = margenIzq + (vPrincipal.Width / 2.0)
+        Dim yCentroPrincipal As Double = yDebajoDesarrollo - (vPrincipal.Height / 2.0)
+        vPrincipal.Position = tg.CreatePoint2d(xCentroPrincipal, yCentroPrincipal)
+
+        AcotarVistaBasica(sheet, tg, vPrincipal, True, True, 0.8)
+
+        ' Detalle de extremo independiente. No comparte la escala longitudinal.
+        Dim vLateral As DrawingView = Nothing
+
+        Try
+            ' Detalle a la derecha, como en el plano patron.
+            pLateral = tg.CreatePoint2d(ancho * 0.87, alto * 0.49)
+
+            vLateral = sheet.DrawingViews.AddBaseView( _
+                partDoc, _
+                pLateral, _
+                escalaExtremo, _
+                orientacionExtremo, _
+                DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+                "", _
+                Nothing, _
+                foldedOptions)
+
+            vLateral.Name = "DETALLE A"
+            MostrarEtiquetaVista(vLateral)
+            ActivarAristasTangentes(vLateral)
+
+            vLateral.Position = pLateral
+
+            AcotarVistaBasica(sheet, tg, vLateral, True, True, 0.8, True)
+            AcotarPlegados90ExteriorExteriorEnSeccion(sheet, tg, vLateral, 2.0, 0.8, 5.0, 1.0, 0.8, 14)
+
+        Catch
+            ' Si falla la proyectada, no se bloquea el plano.
+        End Try
+
+        ' Vista superior: debajo de la principal.
+        Try
+            Dim ySuperiorVista As Double = vPrincipal.Position.Y - (vPrincipal.Height / 2.0) - 1.2
+
+            Dim vSuperior As DrawingView = sheet.DrawingViews.AddBaseView( _
+                partDoc, _
+                tg.CreatePoint2d(vPrincipal.Position.X, ySuperiorVista), _
+                escalaPrincipal, _
+                orientacionSecundaria, _
+                DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+                "", _
+                Nothing, _
+                foldedOptions)
+
+            vSuperior.Name = "VISTA SUPERIOR"
+            QuitarEtiquetaVista(vSuperior)
+            ActivarAristasTangentes(vSuperior)
+            GirarVistaHorizontalSiNecesario(vSuperior)
+
+            ' Tercera vista longitudinal, inmediatamente debajo de la principal.
+            Dim yCentroSuperior As Double = ySuperiorVista - (vSuperior.Height / 2.0)
+            vSuperior.Position = tg.CreatePoint2d(vPrincipal.Position.X, yCentroSuperior)
+
+            AcotarVistaBasica(sheet, tg, vSuperior, False, True, 0.8)
+
+        Catch
+            ' Si falla la proyectada, no se bloquea el plano.
+        End Try
+
+        ' Isometricas: fila inferior, despues del detalle de extremo.
+        Try
+            pIso = tg.CreatePoint2d(ancho * 0.23, 5.0)
+
+            Dim vIso As DrawingView = sheet.DrawingViews.AddBaseView( _
+                partDoc, _
+                pIso, _
+                escalaIso, _
+                ViewOrientationTypeEnum.kIsoTopRightViewOrientation, _
+                DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+                "", _
+                Nothing, _
+                foldedOptions)
+
+            vIso.Name = "ISOMETRICA"
+            QuitarEtiquetaVista(vIso)
+            ActivarAristasTangentes(vIso)
+            GirarVistaHorizontalSiNecesario(vIso)
+            vIso.Position = tg.CreatePoint2d(ancho * 0.23, 1.2 + (vIso.Height / 2.0))
+
+            ' Segunda isometrica en A3, como referencia de la cara opuesta.
+            Dim vIsoOpuesta As DrawingView = sheet.DrawingViews.AddBaseView( _
+                partDoc, _
+                tg.CreatePoint2d(ancho * 0.47, 4.5), _
+                escalaIso, _
+                ViewOrientationTypeEnum.kIsoBottomLeftViewOrientation, _
+                DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+                "", _
+                Nothing, _
+                foldedOptions)
+
+            vIsoOpuesta.Name = "ISOMETRICA OPUESTA"
+            QuitarEtiquetaVista(vIsoOpuesta)
+            ActivarAristasTangentes(vIsoOpuesta)
+            GirarVistaHorizontalSiNecesario(vIsoOpuesta)
+            vIsoOpuesta.Position = tg.CreatePoint2d(ancho * 0.47, 0.8 + (vIsoOpuesta.Height / 2.0))
+
+        Catch
+            ' No bloqueamos si falla la isometrica.
+        End Try
+
+    Else
+
+        '---------------------------------------------------------
+        ' ESTRUCTURA A4 VERTICAL - PATRON MANUAL METALPLAK
+        '---------------------------------------------------------
+        '
+        ' Distribucion objetivo:
+        '   1. Vista principal arriba izquierda.
+        '   2. Vista lateral arriba derecha.
+        '   3. Vista superior en la zona central izquierda.
+        '   4. Isometrica en la zona central derecha.
+        '   5. Desarrollo abajo izquierda.
+        '   6. Simbolo DATOS PLEGADO a la derecha del desarrollo.
+        '
+        ' Se eliminan:
+        '   - orientaciones automaticas que generaban vistas incorrectas;
+        '   - giro automatico de vistas;
+        '   - etiqueta DETALLE A;
+        '   - escalas demasiado pequeñas.
+        '
+        ' La escala se calcula despues de crear las vistas, midiendo su
+        ' tamaño real y buscando la mayor escala normalizada que cabe
+        ' simultaneamente en las zonas del plano.
+
+        Dim yCajetinSupA4 As Double = ObtenerYSuperiorCajetin(sheet)
+
+        ' Posiciones centrales del patron A4 vertical.
+        Dim xColumnaIzquierda As Double = ancho * 0.30
+        Dim xColumnaDerecha As Double = ancho * 0.73
+
+        Dim yFilaSuperior As Double = alto * 0.835
+        Dim yFilaCentral As Double = alto * 0.585
+        Dim yFilaInferior As Double = yCajetinSupA4 + ((alto * 0.43 - yCajetinSupA4) / 2.0)
+
+        ' Zonas disponibles para cada vista.
+        Dim zonaPrincipalW As Double = ancho * 0.47
+        Dim zonaPrincipalH As Double = alto * 0.235
+
+        Dim zonaLateralW As Double = ancho * 0.23
+        Dim zonaLateralH As Double = alto * 0.235
+
+        Dim zonaSuperiorW As Double = ancho * 0.47
+        Dim zonaSuperiorH As Double = alto * 0.17
+
+        Dim zonaIsoW As Double = ancho * 0.34
+        Dim zonaIsoH As Double = alto * 0.22
+
+        Dim zonaDesarrolloW As Double = ancho * 0.49
+        Dim zonaDesarrolloH As Double = Math.Max(5.5, (alto * 0.43) - yCajetinSupA4 - 0.8)
+
+        ' En A4 vertical se fijan las orientaciones del plano manual.
+        Dim orientacionPrincipalA4 As ViewOrientationTypeEnum = _
+            ViewOrientationTypeEnum.kFrontViewOrientation
+
+        Dim orientacionLateralA4 As ViewOrientationTypeEnum = _
+            ViewOrientationTypeEnum.kRightViewOrientation
+
+        Dim orientacionSuperiorA4 As ViewOrientationTypeEnum = _
+            ViewOrientationTypeEnum.kTopViewOrientation
+
+        ' Escala provisional para poder medir cada vista.
+        Dim escalaProvisional As Double = 0.2
+
+        '---------------------------------------------------------
+        ' 1) VISTA PRINCIPAL - ARRIBA IZQUIERDA
+        '---------------------------------------------------------
+
+        Dim vPrincipal As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            tg.CreatePoint2d(xColumnaIzquierda, yFilaSuperior), _
+            escalaProvisional, _
+            orientacionPrincipalA4, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            foldedOptions)
+
+        vPrincipal.Name = "VISTA PRINCIPAL"
+        QuitarEtiquetaVista(vPrincipal)
+        ActivarAristasTangentes(vPrincipal)
+
+        '---------------------------------------------------------
+        ' 2) VISTA LATERAL - ARRIBA DERECHA
+        '---------------------------------------------------------
+
+        Dim vLateral As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            tg.CreatePoint2d(xColumnaDerecha, yFilaSuperior), _
+            escalaProvisional, _
+            orientacionLateralA4, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            foldedOptions)
+
+        vLateral.Name = "VISTA LATERAL"
+        QuitarEtiquetaVista(vLateral)
+        ActivarAristasTangentes(vLateral)
+
+        '---------------------------------------------------------
+        ' 3) VISTA SUPERIOR - CENTRO IZQUIERDA
+        '---------------------------------------------------------
+
+        Dim vSuperior As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            tg.CreatePoint2d(xColumnaIzquierda, yFilaCentral), _
+            escalaProvisional, _
+            orientacionSuperiorA4, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            foldedOptions)
+
+        vSuperior.Name = "VISTA SUPERIOR"
+        QuitarEtiquetaVista(vSuperior)
+        ActivarAristasTangentes(vSuperior)
+
+        '---------------------------------------------------------
+        ' 4) ISOMETRICA - CENTRO DERECHA
+        '---------------------------------------------------------
+
+        Dim vIso As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            tg.CreatePoint2d(xColumnaDerecha, yFilaCentral), _
+            escalaProvisional, _
+            ViewOrientationTypeEnum.kIsoTopRightViewOrientation, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            foldedOptions)
+
+        vIso.Name = "ISOMETRICA"
+        QuitarEtiquetaVista(vIso)
+        ActivarAristasTangentes(vIso)
+
+        '---------------------------------------------------------
+        ' 5) DESARROLLO - ABAJO IZQUIERDA
+        '---------------------------------------------------------
+
+        Dim vDesarrollo As DrawingView = sheet.DrawingViews.AddBaseView( _
+            partDoc, _
+            tg.CreatePoint2d(xColumnaIzquierda, yFilaInferior), _
+            escalaProvisional, _
+            ViewOrientationTypeEnum.kDefaultViewOrientation, _
+            DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, _
+            "", _
+            Nothing, _
+            flatOptions)
+
+        vDesarrollo.Name = "DESARROLLO"
+        QuitarEtiquetaVista(vDesarrollo)
+        ActivarAristasTangentes(vDesarrollo)
+
+        '---------------------------------------------------------
+        ' CALCULO DE LA MAYOR ESCALA REAL QUE CABE
+        '---------------------------------------------------------
+
+        Dim escalaPrincipalCalculada As Double = _
+            CalcularEscalaComunVistasCreadas( _
+                vPrincipal, zonaPrincipalW, zonaPrincipalH, _
+                vLateral, zonaLateralW, zonaLateralH, _
+                vSuperior, zonaSuperiorW, zonaSuperiorH, _
+                escalasDisponibles)
+
+        Dim escalaIsoCalculada As Double = _
+            CalcularEscalaMaximaVistaCreada( _
+                vIso, zonaIsoW, zonaIsoH, escalasDisponibles)
+
+        Dim escalaDesarrolloCalculada As Double = _
+            CalcularEscalaMaximaVistaCreada( _
+                vDesarrollo, zonaDesarrolloW, zonaDesarrolloH, escalasDisponibles)
+
+        ' La isometrica no debe superar la escala de las vistas principales.
+        If escalaIsoCalculada > escalaPrincipalCalculada Then
+            escalaIsoCalculada = escalaPrincipalCalculada
+        End If
+
+        ' Para reproducir el plano manual, el desarrollo puede usar una escala
+        ' independiente, pero nunca se fuerza a una escala menor sin necesidad.
+        escalaPrincipal = escalaPrincipalCalculada
+        escalaIso = escalaIsoCalculada
+        escalaDesarrollo = escalaDesarrolloCalculada
+        escalaTexto = FormatearEscala(escalaPrincipal)
+
+        vPrincipal.Scale = escalaPrincipal
+        vLateral.Scale = escalaPrincipal
+        vSuperior.Scale = escalaPrincipal
+        vIso.Scale = escalaIso
+        vDesarrollo.Scale = escalaDesarrollo
+
+        drawingDoc.Update2(True)
+
+        '---------------------------------------------------------
+        ' POSICION FINAL EXACTA
+        '---------------------------------------------------------
+
+        vPrincipal.Position = tg.CreatePoint2d( _
+            xColumnaIzquierda, _
+            yFilaSuperior)
+
+        vLateral.Position = tg.CreatePoint2d( _
+            xColumnaDerecha, _
+            yFilaSuperior)
+
+        vSuperior.Position = tg.CreatePoint2d( _
+            xColumnaIzquierda, _
+            yFilaCentral)
+
+        vIso.Position = tg.CreatePoint2d( _
+            xColumnaDerecha, _
+            yFilaCentral - 0.1)
+
+        vDesarrollo.Position = tg.CreatePoint2d( _
+            xColumnaIzquierda, _
+            yFilaInferior)
+
+        '---------------------------------------------------------
+        ' ACOTACION DESPUES DE ESCALAR Y COLOCAR
+        '---------------------------------------------------------
+
+        AcotarVistaBasica(sheet, tg, vPrincipal, True, True, 0.75)
+        AcotarVistaBasica(sheet, tg, vLateral, True, True, 0.75)
+        AcotarVistaBasica(sheet, tg, vSuperior, False, True, 0.75)
+        AcotarVistaBasica(sheet, tg, vDesarrollo, True, True, 0.75)
+
+        '---------------------------------------------------------
+        ' 6) SIMBOLO DATOS PLEGADO - JUNTO AL DESARROLLO
+        '---------------------------------------------------------
+
+        Dim xSimboloA4 As Double = _
+            Math.Min(ancho - 3.3, _
+                     vDesarrollo.Position.X + (vDesarrollo.Width / 2.0) + 3.2)
+
+        Dim ySimboloA4 As Double = _
+            vDesarrollo.Position.Y + 0.2
+
+        pSimbolo = tg.CreatePoint2d(xSimboloA4, ySimboloA4)
+
+        InsertarSimboloDatosPlegado( _
+            drawingDoc, _
+            sheet, _
+            nombreSimboloDatos, _
+            pSimbolo, _
+            matriz, _
+            codCorte, _
+            espesorTexto)
+
+        ' Rotulo COD PLEG encima del simbolo de datos, como en el plano patron.
+        If codigoPlegadoManual <> "" Then
+            Dim pCodigoPlegadoA4 As Point2d = _
+                tg.CreatePoint2d(pSimbolo.X, pSimbolo.Y + 2.2)
+
+            InsertarRotuloCodigoPlegado( _
+                sheet, _
+                tg, _
+                pCodigoPlegadoA4, _
+                codigoPlegadoManual)
+        End If
+
+    End If
+
+    '---------------------------------------------------------
+    ' ESCRIBIR PROPIEDADES EN EL PLANO
+    '---------------------------------------------------------
+
+    EscribirPropiedadUsuario(drawingDoc, "COD_PLEG", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "COD_PLEGADO", codigoPlegadoManual)
+    EscribirPropiedadUsuario(drawingDoc, "COD_ALMACEN", codAlmacen)
+    EscribirPropiedadUsuario(drawingDoc, "CORTE", codCorte)
+    EscribirPropiedadUsuario(drawingDoc, "ESPESOR", espesorTexto)
+    EscribirPropiedadUsuario(drawingDoc, "MATRIZ", matriz)
+    EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
+    EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
+    EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
+    EscribirPropiedadUsuario(drawingDoc, "ESTADO_DISENO", estadoDiseno)
+    EscribirPropiedadUsuario(drawingDoc, "REVISADO_POR", revisadoPor)
+    EscribirPropiedadUsuario(drawingDoc, "APROBADO_FABRICACION_POR", aprobadoFabPor)
+    EscribirPropiedadUsuario(drawingDoc, "ESCALA", escalaTexto)
+    EscribirPropiedadUsuario(drawingDoc, "ARTICULO", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "ARTÍCULO", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "Nº DE PIEZA", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "NUMERO DE PIEZA", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "NÚMERO DE PIEZA", codPleg)
+    EscribirPropiedadUsuario(drawingDoc, "CENTRO", centroTrabajo)
+    EscribirPropiedadUsuario(drawingDoc, "REFERENCIA CLIENTE", referenciaCliente)
+    EscribirPropiedadUsuario(drawingDoc, "REFERENCIA_CLIENTE", referenciaCliente)
+    EscribirPropiedadUsuario(drawingDoc, "CODIGO CLIENTE", referenciaCliente)
+    EscribirPropiedadUsuario(drawingDoc, "CÓDIGO CLIENTE", referenciaCliente)
+    EscribirPropiedadUsuario(drawingDoc, "COD_CLIENTE", referenciaCliente)
+
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Part Number", codPleg)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Stock Number", codAlmacen)
+
+    ' Rellenar tambien posibles textos solicitados/prompts del cajetin.
+    ' Algunas plantillas no leen iProperties, sino entradas solicitadas del propio cajetin.
+    RellenarPromptsCajetin(sheet, codPleg, centroTrabajo, escalaTexto, referenciaCliente)
+
+    ' Repetimos propiedades estandar por compatibilidad con el cajetin.
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Part Number", codPleg)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Stock Number", codAlmacen)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Description", descripcion)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Project", proyecto)
+    EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Designer", disenador)
+    EscribirPropiedad(drawingDoc, "Inventor Summary Information", "Author", disenador)
+    EscribirPropiedad(drawingDoc, "Summary Information", "Author", disenador)
+    EscribirPropiedad(drawingDoc, "Inventor Summary Information", "Revision Number", revision)
+    EscribirPropiedad(drawingDoc, "Summary Information", "Revision Number", revision)
 
     drawingDoc.Update2(True)
 
-    ' Insertar rótulo COD PLEGADO si se solicitó
-    If incluirCodigoPlegado AndAlso codigoPlegadoManual <> "" Then
-        Try
-            Dim pCodigoPlegado As Point2d = tg.CreatePoint2d(ancho * 0.32, alto * 0.55)
-            InsertarRotuloCodigoPlegado(sheet, tg, pCodigoPlegado, codigoPlegadoManual)
-            drawingDoc.Update2(True)
-        Catch ex As Exception
-            ' No detener el proceso si falla la inserción del rótulo
-        End Try
-    End If
+    '---------------------------------------------------------
+    ' GUARDAR Y EXPORTAR
+    '---------------------------------------------------------
 
     Dim nombreBase As String = LimpiarNombreArchivo(codPleg)
     If nombreBase.Length > 130 Then nombreBase = nombreBase.Substring(0, 130)
 
-    Dim rutaPlano As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".idw")
+    Dim extensionPlano As String = System.IO.Path.GetExtension(rutaPlantilla).ToLower()
+    If extensionPlano <> ".idw" And extensionPlano <> ".dwg" Then extensionPlano = ".idw"
+
+    Dim rutaPlano As String = System.IO.Path.Combine(carpetaSalida, nombreBase & extensionPlano)
     Dim rutaPDF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".pdf")
+    Dim rutaDWF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".dwf")
 
     drawingDoc.SaveAs(rutaPlano, False)
     ExportarPDF(invApp, drawingDoc, rutaPDF)
+    ExportarDWF(invApp, drawingDoc, rutaDWF)
+
+    ' Dejar el plano abierto en Inventor para poder revisarlo.
     drawingDoc.Activate()
 
 End Sub
 
 '---------------------------------------------------------
-' CREAR PLANO SOLDADURA
+' ACOTACION AUTOMATICA BASICA
 '---------------------------------------------------------
 
-Sub CrearPlanoSoldadura(ByVal invApp As Inventor.Application, _
-                        ByVal tg As TransientGeometry, _
-                        ByVal asmDoc As AssemblyDocument, _
-                        ByVal rutaPlantillaBase As String, _
-                        ByVal notaSoldadura As String, _
-                        ByVal secuenciaSoldadura As String, _
-                        ByVal centroTrabajo As String, _
-                        ByVal escalas() As Double)
-
-    Dim articulo As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Part Number")
-    Dim descripcion As String = LeerPropiedad(asmDoc, "Design Tracking Properties", "Description")
-
-    If articulo = "" Then articulo = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
-    If descripcion = "" Then descripcion = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
-
-    Dim rutaPlantilla As String = ObtenerRutaPlantilla(rutaPlantillaBase)
-    If rutaPlantilla = "" Then
-        Throw New Exception("No se ha encontrado la plantilla de soldadura.")
-    End If
-
-    Dim carpetaSalida As String = System.IO.Path.GetDirectoryName(asmDoc.FullFileName)
-
-    Dim drawingDoc As DrawingDocument = TryCast(invApp.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, rutaPlantilla, True), DrawingDocument)
-    If drawingDoc Is Nothing Then
-        Throw New Exception("No se ha podido crear el plano desde la plantilla.")
-    End If
-
-    Dim sheet As Sheet = drawingDoc.ActiveSheet
-    Dim escala As Double = CalcularEscalaEnsamblaje(asmDoc, sheet, escalas)
-    Dim pPrincipal As Point2d = tg.CreatePoint2d(sheet.Width * 0.30, sheet.Height * 0.66)
-
+Sub AcotarVistaBasica(ByVal sheet As Sheet, _
+                      ByVal tg As TransientGeometry, _
+                      ByVal vista As DrawingView, _
+                      ByVal acotarHorizontal As Boolean, _
+                      ByVal acotarVertical As Boolean, _
+                      ByVal offsetCm As Double, _
+                      Optional ByVal verticalDerecha As Boolean = False)
     Try
-        Dim vPrincipal As DrawingView = sheet.DrawingViews.AddBaseView(asmDoc, pPrincipal, escala, ViewOrientationTypeEnum.kFrontViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", Nothing, Nothing)
-        vPrincipal.Name = "PRINCIPAL"
-        QuitarEtiquetaVista(vPrincipal)
-        ActivarAristasTangentes(vPrincipal)
+        If vista Is Nothing Then Exit Sub
+
+        Dim curvaMinX As DrawingCurve = Nothing
+        Dim curvaMaxX As DrawingCurve = Nothing
+        Dim curvaMinY As DrawingCurve = Nothing
+        Dim curvaMaxY As DrawingCurve = Nothing
+
+        Dim intentoMinX As PointIntentEnum = PointIntentEnum.kStartPointIntent
+        Dim intentoMaxX As PointIntentEnum = PointIntentEnum.kStartPointIntent
+        Dim intentoMinY As PointIntentEnum = PointIntentEnum.kStartPointIntent
+        Dim intentoMaxY As PointIntentEnum = PointIntentEnum.kStartPointIntent
+
+        Dim minX As Double = 999999
+        Dim maxX As Double = -999999
+        Dim minY As Double = 999999
+        Dim maxY As Double = -999999
+
+        For Each dc As DrawingCurve In vista.DrawingCurves
+            Try
+                RegistrarPuntoExtremo(dc, PointIntentEnum.kStartPointIntent, dc.StartPoint, curvaMinX, intentoMinX, minX, curvaMaxX, intentoMaxX, maxX, curvaMinY, intentoMinY, minY, curvaMaxY, intentoMaxY, maxY)
+            Catch
+            End Try
+
+            Try
+                RegistrarPuntoExtremo(dc, PointIntentEnum.kEndPointIntent, dc.EndPoint, curvaMinX, intentoMinX, minX, curvaMaxX, intentoMaxX, maxX, curvaMinY, intentoMinY, minY, curvaMaxY, intentoMaxY, maxY)
+            Catch
+            End Try
+        Next
+
+        If acotarHorizontal AndAlso curvaMinX IsNot Nothing AndAlso curvaMaxX IsNot Nothing Then
+            Try
+                Dim intentH1 As GeometryIntent = sheet.CreateGeometryIntent(curvaMinX, intentoMinX)
+                Dim intentH2 As GeometryIntent = sheet.CreateGeometryIntent(curvaMaxX, intentoMaxX)
+                Dim ptTextoH As Point2d = tg.CreatePoint2d(vista.Position.X, vista.Position.Y - (vista.Height / 2.0) - offsetCm)
+                sheet.DrawingDimensions.GeneralDimensions.AddLinear(ptTextoH, intentH1, intentH2, DimensionTypeEnum.kHorizontalDimensionType)
+            Catch
+            End Try
+        End If
+
+        If acotarVertical AndAlso curvaMinY IsNot Nothing AndAlso curvaMaxY IsNot Nothing Then
+            Try
+                Dim intentV1 As GeometryIntent = sheet.CreateGeometryIntent(curvaMinY, intentoMinY)
+                Dim intentV2 As GeometryIntent = sheet.CreateGeometryIntent(curvaMaxY, intentoMaxY)
+                Dim xTextoV As Double = vista.Position.X - (vista.Width / 2.0) - offsetCm
+                If verticalDerecha Then xTextoV = vista.Position.X + (vista.Width / 2.0) + offsetCm
+                Dim ptTextoV As Point2d = tg.CreatePoint2d(xTextoV, vista.Position.Y)
+                sheet.DrawingDimensions.GeneralDimensions.AddLinear(ptTextoV, intentV1, intentV2, DimensionTypeEnum.kVerticalDimensionType)
+            Catch
+            End Try
+        End If
+
     Catch
     End Try
+End Sub
 
-    drawingDoc.Update2(True)
+Sub RegistrarPuntoExtremo(ByVal dc As DrawingCurve, _
+                          ByVal intento As PointIntentEnum, _
+                          ByVal p As Point2d, _
+                          ByRef curvaMinX As DrawingCurve, _
+                          ByRef intentoMinX As PointIntentEnum, _
+                          ByRef minX As Double, _
+                          ByRef curvaMaxX As DrawingCurve, _
+                          ByRef intentoMaxX As PointIntentEnum, _
+                          ByRef maxX As Double, _
+                          ByRef curvaMinY As DrawingCurve, _
+                          ByRef intentoMinY As PointIntentEnum, _
+                          ByRef minY As Double, _
+                          ByRef curvaMaxY As DrawingCurve, _
+                          ByRef intentoMaxY As PointIntentEnum, _
+                          ByRef maxY As Double)
+    Try
+        If p Is Nothing Then Exit Sub
 
-    Dim nombreBase As String = LimpiarNombreArchivo(articulo)
-    If nombreBase.Length > 130 Then nombreBase = nombreBase.Substring(0, 130)
+        If p.X < minX Then
+            minX = p.X
+            curvaMinX = dc
+            intentoMinX = intento
+        End If
 
-    Dim rutaPlano As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".idw")
-    Dim rutaPDF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".pdf")
+        If p.X > maxX Then
+            maxX = p.X
+            curvaMaxX = dc
+            intentoMaxX = intento
+        End If
 
-    drawingDoc.SaveAs(rutaPlano, False)
-    ExportarPDF(invApp, drawingDoc, rutaPDF)
-    drawingDoc.Activate()
+        If p.Y < minY Then
+            minY = p.Y
+            curvaMinY = dc
+            intentoMinY = intento
+        End If
 
+        If p.Y > maxY Then
+            maxY = p.Y
+            curvaMaxY = dc
+            intentoMaxY = intento
+        End If
+    Catch
+    End Try
 End Sub
 
 '---------------------------------------------------------
-' CREAR DESPIECE VISUAL
+' ACOTACION DE PLEGADOS A 90 GRADOS EN SECCION
+' Exterior a exterior sobre vista lateral / perfil
 '---------------------------------------------------------
 
-Sub CrearDespieceVisual(ByVal invApp As Inventor.Application, _
-                        ByVal tg As TransientGeometry, _
-                        ByVal asmDoc As AssemblyDocument)
-
-    Dim templatePath As String = "Q:\BIBLIOTECA INVENTOR 2019\PLANTILLAS 2019\DESPIECE.idw"
-
-    If Not System.IO.File.Exists(templatePath) Then
-        Throw New Exception("No se encuentra la plantilla:" & vbCrLf & templatePath)
-    End If
-
-    Dim asmFolder As String = System.IO.Path.GetDirectoryName(asmDoc.FullFileName)
-    Dim asmName As String = System.IO.Path.GetFileNameWithoutExtension(asmDoc.FullFileName)
-    Dim outputFolder As String = System.IO.Path.Combine(asmFolder, "02_DESPIECE_VISUAL")
-
-    If Not System.IO.Directory.Exists(outputFolder) Then
-        System.IO.Directory.CreateDirectory(outputFolder)
-    End If
-
-    Dim baseOutputName As String = SafeFileName(asmName & "_DESPIECE_VISUAL")
-    Dim savePath As String = GetUniqueFilePath(System.IO.Path.Combine(outputFolder, baseOutputName & ".idw"))
-
+Sub AcotarPlegados90ExteriorExteriorEnSeccion(ByVal sheet As Sheet, _
+                                             ByVal tg As TransientGeometry, _
+                                             ByVal vista As DrawingView, _
+                                             ByVal offsetInicialCm As Double, _
+                                             ByVal saltoOffsetCm As Double, _
+                                             ByVal toleranciaAngularGrados As Double, _
+                                             ByVal longitudMinimaLineaCm As Double, _
+                                             ByVal separacionMinimaCotaCm As Double, _
+                                             ByVal maximoCotas As Integer)
     Try
-        asmDoc.Update()
+        If vista Is Nothing Then Exit Sub
+
+        Dim estacionesX As New System.Collections.Generic.List(Of Double)
+        Dim curvasX As New System.Collections.Generic.List(Of DrawingCurve)
+        Dim intentosX As New System.Collections.Generic.List(Of PointIntentEnum)
+        Dim puntosX As New System.Collections.Generic.List(Of Point2d)
+
+        Dim estacionesY As New System.Collections.Generic.List(Of Double)
+        Dim curvasY As New System.Collections.Generic.List(Of DrawingCurve)
+        Dim intentosY As New System.Collections.Generic.List(Of PointIntentEnum)
+        Dim puntosY As New System.Collections.Generic.List(Of Point2d)
+
+        Dim toleranciaAgrupar As Double = 0.08
+
+        ' 1) Detectar lineas horizontales y verticales del perfil.
+        '    Las verticales generan estaciones X.
+        '    Las horizontales generan estaciones Y.
+        For Each dc As DrawingCurve In vista.DrawingCurves
+            Try
+                If Not EsLineaRectaVista(dc) Then Continue For
+
+                Dim p1 As Point2d = dc.StartPoint
+                Dim p2 As Point2d = dc.EndPoint
+                If p1 Is Nothing Or p2 Is Nothing Then Continue For
+
+                Dim longitud As Double = Distancia2DLocal(p1, p2)
+                If longitud < longitudMinimaLineaCm Then Continue For
+
+                Dim ang As Double = AnguloLineaVistaGrados(p1, p2)
+
+                If EsLineaVerticalVista(ang, toleranciaAngularGrados) Then
+                    Dim xMedio As Double = (p1.X + p2.X) / 2.0
+                    AgregarEstacionCota(estacionesX, curvasX, intentosX, puntosX, xMedio, dc, PointIntentEnum.kStartPointIntent, p1, toleranciaAgrupar)
+                ElseIf EsLineaHorizontalVista(ang, toleranciaAngularGrados) Then
+                    Dim yMedio As Double = (p1.Y + p2.Y) / 2.0
+                    AgregarEstacionCota(estacionesY, curvasY, intentosY, puntosY, yMedio, dc, PointIntentEnum.kStartPointIntent, p1, toleranciaAgrupar)
+                End If
+            Catch
+            End Try
+        Next
+
+        OrdenarEstacionesCota(estacionesX, curvasX, intentosX, puntosX)
+        OrdenarEstacionesCota(estacionesY, curvasY, intentosY, puntosY)
+
+        Dim cotasCreadas As Integer = 0
+        Dim offsetActual As Double = offsetInicialCm
+
+        ' 2) Cotas horizontales exterior-exterior entre estaciones X consecutivas.
+        '    Colocadas por encima de la vista.
+        For i As Integer = 0 To estacionesX.Count - 2
+            If cotasCreadas >= maximoCotas Then Exit For
+
+            Try
+                Dim distancia As Double = Math.Abs(estacionesX(i + 1) - estacionesX(i))
+                If distancia < separacionMinimaCotaCm Then Continue For
+
+                Dim gi1 As GeometryIntent = sheet.CreateGeometryIntent(curvasX(i), puntosX(i))
+                Dim gi2 As GeometryIntent = sheet.CreateGeometryIntent(curvasX(i + 1), puntosX(i + 1))
+
+                Dim xTexto As Double = (estacionesX(i) + estacionesX(i + 1)) / 2.0
+                Dim yTexto As Double = vista.Position.Y + (vista.Height / 2.0) + offsetActual
+                Dim ptTexto As Point2d = tg.CreatePoint2d(xTexto, yTexto)
+
+                sheet.DrawingDimensions.GeneralDimensions.AddLinear(ptTexto, gi1, gi2, DimensionTypeEnum.kHorizontalDimensionType)
+
+                cotasCreadas += 1
+                offsetActual += saltoOffsetCm
+            Catch
+            End Try
+        Next
+
+        ' 3) Cotas verticales exterior-exterior entre estaciones Y consecutivas.
+        '    Colocadas a la derecha de la vista, como en el plano patron.
+        offsetActual = offsetInicialCm
+
+        For i As Integer = 0 To estacionesY.Count - 2
+            If cotasCreadas >= maximoCotas Then Exit For
+
+            Try
+                Dim distancia As Double = Math.Abs(estacionesY(i + 1) - estacionesY(i))
+                If distancia < separacionMinimaCotaCm Then Continue For
+
+                Dim gi1 As GeometryIntent = sheet.CreateGeometryIntent(curvasY(i), puntosY(i))
+                Dim gi2 As GeometryIntent = sheet.CreateGeometryIntent(curvasY(i + 1), puntosY(i + 1))
+
+                Dim xTexto As Double = vista.Position.X + (vista.Width / 2.0) + offsetActual
+                Dim yTexto As Double = (estacionesY(i) + estacionesY(i + 1)) / 2.0
+                Dim ptTexto As Point2d = tg.CreatePoint2d(xTexto, yTexto)
+
+                sheet.DrawingDimensions.GeneralDimensions.AddLinear(ptTexto, gi1, gi2, DimensionTypeEnum.kVerticalDimensionType)
+
+                cotasCreadas += 1
+                offsetActual += saltoOffsetCm
+            Catch
+            End Try
+        Next
+
     Catch
+        ' No bloqueamos el plano si falla la acotacion de seccion.
     End Try
+End Sub
 
-    Dim drawDoc As DrawingDocument = invApp.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, templatePath, True)
-    Dim sheet As Sheet = drawDoc.Sheets.Item(1)
-    sheet.Activate()
-
+Function EsLineaRectaVista(ByVal dc As DrawingCurve) As Boolean
     Try
-        If drawDoc.Sheets.Count > 1 Then
-            For i As Integer = drawDoc.Sheets.Count To 2 Step -1
-                drawDoc.Sheets.Item(i).Delete()
-            Next
-        End If
-    Catch
-    End Try
+        If dc Is Nothing Then Return False
+        If dc.StartPoint Is Nothing Then Return False
+        If dc.EndPoint Is Nothing Then Return False
 
-    Dim bom As BOM = asmDoc.ComponentDefinition.BOM
-    bom.PartsOnlyViewEnabled = True
-
-    Dim partsOnlyView As BOMView = Nothing
-
-    For Each v As BOMView In bom.BOMViews
-        If v.ViewType = BOMViewTypeEnum.kPartsOnlyBOMViewType Then
-            partsOnlyView = v
-            Exit For
-        End If
-    Next
-
-    If partsOnlyView Is Nothing Then
-        Throw New Exception("No se ha encontrado la vista BOM Solo piezas.")
-    End If
-
-    Dim validRows As New System.Collections.Generic.List(Of BOMRow)
-
-    For Each bomRow As BOMRow In partsOnlyView.BOMRows
+        ' Si tiene centro, normalmente es arco/circulo. Lo descartamos para no acotar radios como rectas.
         Try
-            Dim compDef As ComponentDefinition = bomRow.ComponentDefinitions.Item(1)
-            Dim modelDoc As Document = compDef.Document
+            Dim c As Point2d = dc.CenterPoint
+            If c IsNot Nothing Then Return False
+        Catch
+        End Try
 
-            If modelDoc.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
-                validRows.Add(bomRow)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+Function AnguloLineaVistaGrados(ByVal p1 As Point2d, ByVal p2 As Point2d) As Double
+    Try
+        Dim a As Double = Math.Atan2(p2.Y - p1.Y, p2.X - p1.X) * 180.0 / Math.PI
+        If a < 0 Then a += 180.0
+        If a >= 180.0 Then a -= 180.0
+        Return a
+    Catch
+        Return 0
+    End Try
+End Function
+
+Function EsLineaHorizontalVista(ByVal ang As Double, ByVal tol As Double) As Boolean
+    Try
+        If Math.Abs(ang - 0) <= tol Then Return True
+        If Math.Abs(ang - 180) <= tol Then Return True
+        Return False
+    Catch
+        Return False
+    End Try
+End Function
+
+Function EsLineaVerticalVista(ByVal ang As Double, ByVal tol As Double) As Boolean
+    Try
+        If Math.Abs(ang - 90) <= tol Then Return True
+        Return False
+    Catch
+        Return False
+    End Try
+End Function
+
+Function Distancia2DLocal(ByVal p1 As Point2d, ByVal p2 As Point2d) As Double
+    Try
+        Return Math.Sqrt(((p2.X - p1.X) ^ 2) + ((p2.Y - p1.Y) ^ 2))
+    Catch
+        Return 0
+    End Try
+End Function
+
+Sub AgregarEstacionCota(ByVal estaciones As System.Collections.Generic.List(Of Double), _
+                        ByVal curvas As System.Collections.Generic.List(Of DrawingCurve), _
+                        ByVal intentos As System.Collections.Generic.List(Of PointIntentEnum), _
+                        ByVal puntos As System.Collections.Generic.List(Of Point2d), _
+                        ByVal valor As Double, _
+                        ByVal curva As DrawingCurve, _
+                        ByVal intento As PointIntentEnum, _
+                        ByVal punto As Point2d, _
+                        ByVal tolerancia As Double)
+    Try
+        For i As Integer = 0 To estaciones.Count - 1
+            If Math.Abs(estaciones(i) - valor) <= tolerancia Then
+                Exit Sub
             End If
-        Catch
-        End Try
-    Next
+        Next
 
-    If validRows.Count = 0 Then
-        Throw New Exception("No se han encontrado piezas IPT válidas en la BOM.")
-    End If
-
-    Dim totalParts As Integer = validRows.Count
-    Dim marginLeft As Double = 2.0
-    Dim marginRight As Double = 2.0
-    Dim marginTop As Double = 1.6
-    Dim marginBottom As Double = 6.3
-
-    Dim usableW As Double = sheet.Width - marginLeft - marginRight
-    Dim usableH As Double = sheet.Height - marginTop - marginBottom
-
-    If usableW <= 0 Or usableH <= 0 Then
-        Throw New Exception("El espacio útil de la hoja es insuficiente.")
-    End If
-
-    Dim bestCols As Integer = 1
-    Dim bestRows As Integer = totalParts
-    Dim bestScore As Double = -1
-
-    For testCols As Integer = 1 To totalParts
-        Dim testRows As Integer = CInt(Math.Ceiling(totalParts / testCols))
-        Dim testCellW As Double = usableW / testCols
-        Dim testCellH As Double = usableH / testRows
-        Dim ratio As Double = testCellW / testCellH
-        Dim targetRatio As Double = 1.25
-        Dim ratioPenalty As Double = Math.Abs(ratio - targetRatio)
-        Dim score As Double = (testCellW * testCellH) - (ratioPenalty * 2.0)
-
-        If score > bestScore Then
-            bestScore = score
-            bestCols = testCols
-            bestRows = testRows
-        End If
-    Next
-
-    Dim cols As Integer = bestCols
-    Dim rows As Integer = bestRows
-    Dim cellW As Double = usableW / cols
-    Dim cellH As Double = usableH / rows
-
-    For index As Integer = 0 To totalParts - 1
-        Dim bomRow As BOMRow = validRows.Item(index)
-        Dim compDef As ComponentDefinition = Nothing
-        Dim modelDoc As Document = Nothing
-
-        Try
-            compDef = bomRow.ComponentDefinitions.Item(1)
-            modelDoc = compDef.Document
-        Catch
-            Continue For
-        End Try
-
-        If modelDoc Is Nothing Then Continue For
-        If modelDoc.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then
-            Continue For
-        End If
-
-        Dim partNumber As String = ""
-        Try
-            partNumber = modelDoc.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value
-        Catch
-            partNumber = ""
-        End Try
-
-        If partNumber Is Nothing Then partNumber = ""
-        partNumber = Trim(partNumber)
-
-        If partNumber = "" Then
-            partNumber = modelDoc.DisplayName
-            partNumber = Replace(partNumber, ".ipt", "")
-            partNumber = Replace(partNumber, ".IPT", "")
-        End If
-
-        Dim qty As String = ""
-        Try
-            qty = bomRow.TotalQuantity.ToString()
-        Catch
-            qty = "1"
-        End Try
-
-        If qty Is Nothing Or qty = "" Then qty = "1"
-
-        Dim col As Integer = index Mod cols
-        Dim fila As Integer = CInt(Math.Floor(index / cols))
-
-        Dim x As Double = marginLeft + (col * cellW) + (cellW / 2)
-        Dim y As Double = sheet.Height - marginTop - (fila * cellH) - (cellH / 2)
-
-        Try
-            Dim view As DrawingView = sheet.DrawingViews.AddBaseView(modelDoc, tg.CreatePoint2d(x, y), 1, ViewOrientationTypeEnum.kIsoTopRightViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
-            Dim labelText As String = partNumber & " (" & qty & "UD)"
-            Dim labelX As Double = x - (cellW * 0.38)
-            Dim labelY As Double = y - (cellH * 0.34)
-            sheet.DrawingNotes.GeneralNotes.AddFitted(tg.CreatePoint2d(labelX, labelY), labelText)
-        Catch
-        End Try
-    Next
-
-    Try
-        drawDoc.Update()
+        estaciones.Add(valor)
+        curvas.Add(curva)
+        intentos.Add(intento)
+        puntos.Add(punto)
     Catch
     End Try
+End Sub
 
-    drawDoc.SaveAs(savePath, False)
+Sub OrdenarEstacionesCota(ByVal estaciones As System.Collections.Generic.List(Of Double), _
+                          ByVal curvas As System.Collections.Generic.List(Of DrawingCurve), _
+                          ByVal intentos As System.Collections.Generic.List(Of PointIntentEnum), _
+                          ByVal puntos As System.Collections.Generic.List(Of Point2d))
+    Try
+        If estaciones.Count < 2 Then Exit Sub
+
+        For i As Integer = 0 To estaciones.Count - 2
+            For j As Integer = i + 1 To estaciones.Count - 1
+                If estaciones(j) < estaciones(i) Then
+                    Dim tempV As Double = estaciones(i)
+                    estaciones(i) = estaciones(j)
+                    estaciones(j) = tempV
+
+                    Dim tempC As DrawingCurve = curvas(i)
+                    curvas(i) = curvas(j)
+                    curvas(j) = tempC
+
+                    Dim tempI As PointIntentEnum = intentos(i)
+                    intentos(i) = intentos(j)
+                    intentos(j) = tempI
+
+                    Dim tempP As Point2d = puntos(i)
+                    puntos(i) = puntos(j)
+                    puntos(j) = tempP
+                End If
+            Next
+        Next
+    Catch
+    End Try
+End Sub
+
+ '---------------------------------------------------------
+' CODIGO DE PLEGADO MANUAL
+'---------------------------------------------------------
+
+Function PedirCodigoPlegado(ByVal partDoc As PartDocument) As String
+
+    Dim valorAnterior As String = _
+        LeerPropiedadUsuario(partDoc, "COD_PLEGADO")
+
+    Dim valor As String = ""
+
+    Do
+        valor = Microsoft.VisualBasic.Interaction.InputBox( _
+            "Introduce el codigo de plegado que debe aparecer en el plano." & vbCrLf & vbCrLf & _
+            "Se mostrara con el formato:" & vbCrLf & _
+            "COD PLEG" & vbCrLf & _
+            "0000", _
+            "Codigo de plegado", _
+            valorAnterior)
+
+        valor = Trim(valor)
+
+        If valor <> "" Then
+            Return valor
+        End If
+
+        Dim respuesta As System.Windows.Forms.DialogResult = _
+            System.Windows.Forms.MessageBox.Show( _
+                "No has introducido ningun codigo de plegado." & vbCrLf & vbCrLf & _
+                "¿Quieres continuar y generar el plano sin el rotulo COD PLEG?", _
+                "Codigo de plegado", _
+                System.Windows.Forms.MessageBoxButtons.YesNo, _
+                System.Windows.Forms.MessageBoxIcon.Question)
+
+        If respuesta = System.Windows.Forms.DialogResult.Yes Then
+            Return ""
+        End If
+
+    Loop
+
+End Function
+
+
+Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
+                                ByVal tg As TransientGeometry, _
+                                ByVal punto As Point2d, _
+                                ByVal codigo As String)
+
+    Try
+        If sheet Is Nothing Then Exit Sub
+        If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
+
+        ' Formato visual:
+        '   COD PLEG  -> 3,5 mm
+        '   codigo    -> 8,0 mm
+        '
+        ' Inventor expresa FontSize en centimetros.
+        Dim textoFormateado As String = _
+            "<StyleOverride FontSize='0.35' Bold='False'>COD PLEG</StyleOverride>" & _
+            "<Br/>" & _
+            "<StyleOverride FontSize='0.80' Bold='False'>" & _
+            EscaparTextoInventor(Trim(codigo)) & _
+            "</StyleOverride>"
+
+        Dim nota As GeneralNote = _
+            sheet.DrawingNotes.GeneralNotes.AddFitted( _
+                punto, _
+                textoFormateado)
+
+        Try
+            nota.HorizontalJustification = _
+                HorizontalTextAlignmentEnum.kAlignTextCenter
+        Catch
+        End Try
+
+    Catch ex As Exception
+        Throw New Exception( _
+            "No se ha podido insertar el rotulo COD PLEG. Detalle: " & ex.Message)
+    End Try
 
 End Sub
 
-'---------------------------------------------------------
-' FUNCIONES AUXILIARES COMUNES
-'---------------------------------------------------------
 
-Function EsPiezaChapa(ByVal p As PartDocument) As Boolean
-    If p Is Nothing Then Return False
-    Return TypeOf p.ComponentDefinition Is SheetMetalComponentDefinition
+Function EscaparTextoInventor(ByVal texto As String) As String
+
+    If texto Is Nothing Then Return ""
+
+    texto = texto.Replace("&", "&amp;")
+    texto = texto.Replace("<", "&lt;")
+    texto = texto.Replace(">", "&gt;")
+    texto = texto.Replace("""", "&quot;")
+    texto = texto.Replace("'", "&apos;")
+
+    Return texto
+
 End Function
 
-Function ObtenerRutaPlantilla(ByVal rutaBase As String) As String
-    If System.IO.File.Exists(rutaBase) Then Return rutaBase
-    If System.IO.File.Exists(rutaBase & ".idw") Then Return rutaBase & ".idw"
-    If System.IO.File.Exists(rutaBase & ".dwg") Then Return rutaBase & ".dwg"
-    Return ""
-End Function
 
-Sub AplicarA3Apaisado(ByVal sheet As Sheet)
+'---------------------------------------------------------
+' SIMBOLO DE BOCETO DATOS PLEGADO
+'---------------------------------------------------------
+
+Sub InsertarSimboloDatosPlegado(ByVal drawingDoc As DrawingDocument, _
+                                ByVal sheet As Sheet, _
+                                ByVal nombreSimbolo As String, _
+                                ByVal punto As Point2d, _
+                                ByVal matriz As String, _
+                                ByVal codCorte As String, _
+                                ByVal espesorTexto As String)
     Try
-        sheet.ChangeSize(DrawingSheetSizeEnum.kA3DrawingSheetSize, True)
-    Catch
+        Dim def As SketchedSymbolDefinition = drawingDoc.SketchedSymbolDefinitions.Item(nombreSimbolo)
+
+        Dim prompts(2) As String
+        prompts(0) = matriz
+        prompts(1) = codCorte
+        prompts(2) = espesorTexto
+
         Try
-            sheet.Size = DrawingSheetSizeEnum.kA3DrawingSheetSize
+            sheet.SketchedSymbols.Add(def, punto, 0, 1, prompts)
         Catch
+            sheet.SketchedSymbols.Add(def, punto, 0, 1)
         End Try
-    End Try
-    Try
-        sheet.Orientation = PageOrientationTypeEnum.kLandscapePageOrientation
-    Catch
+    Catch ex As Exception
+        Throw New Exception("No se ha encontrado o no se ha podido insertar el simbolo de boceto '" & nombreSimbolo & "'. Detalle: " & ex.Message)
     End Try
 End Sub
 
@@ -844,6 +1302,106 @@ Sub BorrarSimbolosExistentes(ByVal sheet As Sheet, ByVal nombreSimbolo As String
     End Try
 End Sub
 
+'---------------------------------------------------------
+' RELLENO DE CAJETIN
+'---------------------------------------------------------
+
+Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
+                           ByVal articulo As String, _
+                           ByVal centro As String, _
+                           ByVal escala As String, _
+                           ByVal referenciaCliente As String)
+    Try
+        If sheet Is Nothing Then Exit Sub
+        If sheet.TitleBlock Is Nothing Then Exit Sub
+
+        Dim tb As TitleBlock = sheet.TitleBlock
+        Dim def As TitleBlockDefinition = tb.Definition
+        If def Is Nothing Then Exit Sub
+
+        For Each txt As Inventor.TextBox In def.Sketch.TextBoxes
+            Try
+                Dim t As String = ""
+
+                Try
+                    t = txt.Text
+                Catch
+                    t = ""
+                End Try
+
+                If t = "" Then
+                    Try
+                        t = txt.FormattedText
+                    Catch
+                        t = ""
+                    End Try
+                End If
+
+                Dim tu As String = t.ToUpper()
+
+                If tu.Contains("ARTICULO") Or _
+                   tu.Contains("ARTÍCULO") Or _
+                   tu.Contains("Nº DE PIEZA") Or _
+                   tu.Contains("N DE PIEZA") Or _
+                   tu.Contains("NUMERO DE PIEZA") Or _
+                   tu.Contains("NÚMERO DE PIEZA") Then
+                    Try
+                        tb.SetPromptResultText(txt, articulo)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("CENTRO") Then
+                    Try
+                        tb.SetPromptResultText(txt, centro)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("ESCALA") Then
+                    Try
+                        tb.SetPromptResultText(txt, escala)
+                    Catch
+                    End Try
+                End If
+
+                If tu.Contains("REFERENCIA CLIENTE") Or _
+                   tu.Contains("CODIGO CLIENTE") Or _
+                   tu.Contains("CÓDIGO CLIENTE") Or _
+                   tu.Contains("COD_CLIENTE") Or _
+                   tu.Contains("COD. CLIENTE") Or _
+                   tu.Contains("<CODIGO CLIENTE>") Or _
+                   tu.Contains("<CÓDIGO CLIENTE>") Then
+                    Try
+                        tb.SetPromptResultText(txt, referenciaCliente)
+                    Catch
+                    End Try
+                End If
+
+            Catch
+            End Try
+        Next
+    Catch
+        ' No bloqueamos el plano si el cajetin no usa prompts.
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' VISUALIZACION DE VISTAS
+'---------------------------------------------------------
+
+Sub ActivarAristasTangentes(ByVal v As DrawingView)
+    Try
+        v.DisplayTangentEdges = True
+    Catch
+        ' Si alguna vista no admite esta propiedad, no bloqueamos la regla.
+    End Try
+End Sub
+
+'---------------------------------------------------------
+' ETIQUETAS
+'---------------------------------------------------------
+
 Sub QuitarEtiquetaVista(ByVal v As DrawingView)
     Try
         v.ShowLabel = False
@@ -851,23 +1409,95 @@ Sub QuitarEtiquetaVista(ByVal v As DrawingView)
     End Try
 End Sub
 
-Sub ActivarAristasTangentes(ByVal v As DrawingView)
+Sub MostrarEtiquetaVista(ByVal v As DrawingView)
     Try
-        v.DisplayTangentEdges = True
+        v.ShowLabel = True
     Catch
     End Try
 End Sub
 
-Function ObtenerMayorDimensionFlatPatternMM(ByVal smDef As SheetMetalComponentDefinition) As Double
+Sub GirarVistaHorizontalSiNecesario(ByVal v As DrawingView)
     Try
-        Dim box As Box = smDef.FlatPattern.RangeBox
-        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X) * 10.0
-        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y) * 10.0
-        Return Math.Max(dx, dy)
+        If v.Height > v.Width * 1.15 Then
+            v.Rotation = v.Rotation + (Math.PI / 2.0)
+        End If
     Catch
-        Return 0
     End Try
+End Sub
+
+ '---------------------------------------------------------
+' ESCALA REAL BASADA EN VISTAS YA CREADAS
+'---------------------------------------------------------
+
+Function CalcularEscalaMaximaVistaCreada( _
+    ByVal vista As DrawingView, _
+    ByVal anchoZona As Double, _
+    ByVal altoZona As Double, _
+    ByVal escalasDisponibles() As Double) As Double
+
+    Try
+        If vista Is Nothing Then Return 0.1
+        If vista.Scale <= 0 Then Return 0.1
+
+        ' Recuperar las dimensiones reales de la geometria a escala 1:1
+        ' a partir del tamaño actual de la vista.
+        Dim anchoReal As Double = vista.Width / vista.Scale
+        Dim altoReal As Double = vista.Height / vista.Scale
+
+        ' Reserva del 10 % para cotas, separaciones y tolerancias.
+        Dim anchoUtil As Double = anchoZona * 0.90
+        Dim altoUtil As Double = altoZona * 0.90
+
+        For Each s As Double In escalasDisponibles
+            If (anchoReal * s <= anchoUtil) AndAlso _
+               (altoReal * s <= altoUtil) Then
+                Return s
+            End If
+        Next
+
+        Return escalasDisponibles(escalasDisponibles.Length - 1)
+
+    Catch
+        Return 0.1
+    End Try
+
 End Function
+
+
+Function CalcularEscalaComunVistasCreadas( _
+    ByVal vista1 As DrawingView, _
+    ByVal anchoZona1 As Double, _
+    ByVal altoZona1 As Double, _
+    ByVal vista2 As DrawingView, _
+    ByVal anchoZona2 As Double, _
+    ByVal altoZona2 As Double, _
+    ByVal vista3 As DrawingView, _
+    ByVal anchoZona3 As Double, _
+    ByVal altoZona3 As Double, _
+    ByVal escalasDisponibles() As Double) As Double
+
+    Try
+        Dim e1 As Double = CalcularEscalaMaximaVistaCreada( _
+            vista1, anchoZona1, altoZona1, escalasDisponibles)
+
+        Dim e2 As Double = CalcularEscalaMaximaVistaCreada( _
+            vista2, anchoZona2, altoZona2, escalasDisponibles)
+
+        Dim e3 As Double = CalcularEscalaMaximaVistaCreada( _
+            vista3, anchoZona3, altoZona3, escalasDisponibles)
+
+        Return Math.Min(e1, Math.Min(e2, e3))
+
+    Catch
+        Return 0.1
+    End Try
+
+End Function
+
+
+'---------------------------------------------------------
+' ESCALAS Y ORIENTACIONES v10.13
+'---------------------------------------------------------
 
 Function CalcularEscalaLongitudinalPlegado(ByVal smDef As SheetMetalComponentDefinition, _
                                            ByVal sheet As Sheet, _
@@ -883,19 +1513,19 @@ Function CalcularEscalaLongitudinalPlegado(ByVal smDef As SheetMetalComponentDef
 
         If usarA3 Then
             If largoMM > 1600 Then
-                escalaTope = 0.0833333333
+                escalaTope = 0.0833333333   ' 1:12
             ElseIf largoMM > 1100 Then
-                escalaTope = 0.1
+                escalaTope = 0.1            ' 1:10
             Else
-                escalaTope = 0.125
+                escalaTope = 0.125          ' 1:8
             End If
         Else
             If largoMM > 600 Then
-                escalaTope = 0.1
+                escalaTope = 0.1            ' 1:10
             ElseIf largoMM > 350 Then
-                escalaTope = 0.125
+                escalaTope = 0.125          ' 1:8
             Else
-                escalaTope = 0.2
+                escalaTope = 0.2            ' 1:5
             End If
         End If
 
@@ -923,181 +1553,111 @@ Function CalcularEscalaLongitudinalPlegado(ByVal smDef As SheetMetalComponentDef
     End Try
 End Function
 
-Sub ObtenerDimensionesDesarrollo(ByVal smDef As SheetMetalComponentDefinition, _
-                                 ByRef anchoFlat As Double, _
-                                 ByRef altoFlat As Double)
-    anchoFlat = 1
-    altoFlat = 1
-
+Function CalcularEscalaDetalleExtremo(ByVal partDoc As PartDocument, _
+                                      ByVal sheet As Sheet, _
+                                      ByVal escalasDisponibles() As Double) As Double
     Try
-        If Not smDef.HasFlatPattern Then
-            smDef.Unfold()
-            Try
-                smDef.FlatPattern.ExitEdit()
-            Catch
-            End Try
-        End If
-
-        Dim box As Box = smDef.FlatPattern.RangeBox
-
-        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X)
-        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y)
-
-        Dim a As Double = Math.Max(dx, dy)
-        Dim b As Double = Math.Min(dx, dy)
-
-        If a <= 0 Then a = 1
-        If b <= 0 Then b = 1
-
-        anchoFlat = a
-        altoFlat = b
-
-    Catch
-        anchoFlat = 1
-        altoFlat = 1
-    End Try
-End Sub
-
-Function CalcularEscalaEnsamblaje(ByVal asmDoc As AssemblyDocument, _
-                                  ByVal sheet As Sheet, _
-                                  ByVal escalas() As Double) As Double
-    Try
-        Dim anchoHoja As Double = sheet.Width
-        Dim altoHoja As Double = sheet.Height
-
-        Dim yCajetin As Double = ObtenerYSuperiorCajetin(sheet)
-        Dim margenX As Double = 1.5
-        Dim margenSup As Double = 1.0
-
-        Dim anchoUtil As Double = anchoHoja - (2 * margenX)
-        Dim altoUtil As Double = altoHoja - yCajetin - margenSup
-        If anchoUtil <= 5 Then anchoUtil = anchoHoja * 0.9
-        If altoUtil <= 5 Then altoUtil = altoHoja * 0.65
-
         Dim mayor As Double = 1
         Dim media As Double = 1
         Dim menor As Double = 1
-        ObtenerDimensionesModeloOrdenadas(asmDoc, mayor, media, menor)
+        ObtenerDimensionesModeloOrdenadas(partDoc, mayor, media, menor)
 
-        Dim zonaW As Double = anchoUtil * 0.60
-        Dim zonaH As Double = altoUtil * 0.50
+        Dim zona As Double = If(sheet.Width > sheet.Height, 7.0, 6.0)
 
-        For Each s As Double In escalas
-            If CabeRectanguloEnZona(mayor, media, zonaW, zonaH, s, True) Then Return s
+        ' El detalle de extremo nunca se amplia por encima de 1:2.
+        For Each s As Double In escalasDisponibles
+            If s <= 0.5 + 0.0000001 Then
+                If CabeRectanguloEnZona(media, menor, zona, zona, s, True) Then Return s
+            End If
         Next
 
-        Return escalas(escalas.Length - 1)
-    Catch
         Return 0.1
+    Catch
+        Return 0.2
     End Try
 End Function
 
-Sub ObtenerDimensionesModeloOrdenadas(ByVal doc As Document, _
-                                      ByRef mayor As Double, _
-                                      ByRef media As Double, _
-                                      ByRef menor As Double)
-    mayor = 1
-    media = 1
-    menor = 1
+Sub ObtenerOrientacionesPiezaLarga(ByVal partDoc As PartDocument, _
+                                   ByRef principal As ViewOrientationTypeEnum, _
+                                   ByRef secundaria As ViewOrientationTypeEnum, _
+                                   ByRef extremo As ViewOrientationTypeEnum)
+    principal = ViewOrientationTypeEnum.kFrontViewOrientation
+    secundaria = ViewOrientationTypeEnum.kTopViewOrientation
+    extremo = ViewOrientationTypeEnum.kRightViewOrientation
 
     Try
-        Dim box As Box = doc.ComponentDefinition.RangeBox
-
+        Dim box As Box = partDoc.ComponentDefinition.RangeBox
         Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X)
         Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y)
         Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z)
 
-        mayor = Math.Max(dx, Math.Max(dy, dz))
-        menor = Math.Min(dx, Math.Min(dy, dz))
-        media = dx + dy + dz - mayor - menor
-
-        If mayor <= 0 Then mayor = 1
-        If media <= 0 Then media = 1
-        If menor <= 0 Then menor = 1
-
+        ' Inventor: Front proyecta XY, Top proyecta XZ y Right proyecta YZ.
+        If dx >= dy AndAlso dx >= dz Then
+            principal = ViewOrientationTypeEnum.kFrontViewOrientation
+            secundaria = ViewOrientationTypeEnum.kTopViewOrientation
+            extremo = ViewOrientationTypeEnum.kRightViewOrientation
+        ElseIf dy >= dx AndAlso dy >= dz Then
+            principal = ViewOrientationTypeEnum.kFrontViewOrientation
+            secundaria = ViewOrientationTypeEnum.kRightViewOrientation
+            extremo = ViewOrientationTypeEnum.kTopViewOrientation
+        Else
+            principal = ViewOrientationTypeEnum.kTopViewOrientation
+            secundaria = ViewOrientationTypeEnum.kRightViewOrientation
+            extremo = ViewOrientationTypeEnum.kFrontViewOrientation
+        End If
     Catch
-        mayor = 1
-        media = 1
-        menor = 1
     End Try
 End Sub
 
-Function CabeRectanguloEnZona(ByVal w As Double, _
-                              ByVal h As Double, _
-                              ByVal zonaW As Double, _
-                              ByVal zonaH As Double, _
-                              ByVal escala As Double, _
-                              ByVal permitirGiro As Boolean) As Boolean
-    Try
-        If w <= 0 Or h <= 0 Or zonaW <= 0 Or zonaH <= 0 Or escala <= 0 Then Return False
+'---------------------------------------------------------
+' PLANTILLA
+'---------------------------------------------------------
 
-        Dim margenCotas As Double = 0.92
-
-        Dim zW As Double = zonaW * margenCotas
-        Dim zH As Double = zonaH * margenCotas
-
-        If (w * escala <= zW) AndAlso (h * escala <= zH) Then Return True
-
-        If permitirGiro Then
-            If (h * escala <= zW) AndAlso (w * escala <= zH) Then Return True
-        End If
-
-        Return False
-    Catch
-        Return False
-    End Try
+Function ObtenerRutaPlantilla(ByVal rutaBase As String) As String
+    If System.IO.File.Exists(rutaBase) Then Return rutaBase
+    If System.IO.File.Exists(rutaBase & ".idw") Then Return rutaBase & ".idw"
+    If System.IO.File.Exists(rutaBase & ".dwg") Then Return rutaBase & ".dwg"
+    Return ""
 End Function
 
-Function ObtenerYSuperiorCajetin(ByVal sheet As Sheet) As Double
+'---------------------------------------------------------
+' FORMATO DE HOJA
+'---------------------------------------------------------
+
+Sub AplicarA3Apaisado(ByVal sheet As Sheet)
     Try
-        If sheet IsNot Nothing AndAlso sheet.TitleBlock IsNot Nothing Then
-            Return sheet.TitleBlock.RangeBox.MaxPoint.Y
-        End If
+        ' Cambia la hoja activa a A3 y mueve borde/cajetin con la hoja.
+        sheet.ChangeSize(DrawingSheetSizeEnum.kA3DrawingSheetSize, True)
     Catch
+        Try
+            sheet.Size = DrawingSheetSizeEnum.kA3DrawingSheetSize
+        Catch
+        End Try
     End Try
 
     Try
-        Return sheet.Height * 0.18
+        sheet.Orientation = PageOrientationTypeEnum.kLandscapePageOrientation
     Catch
-        Return 5
+        ' Si la plantilla ya queda apaisada o la propiedad no esta disponible, no bloqueamos.
+    End Try
+End Sub
+
+Function ObtenerMayorDimensionFlatPatternMM(ByVal smDef As SheetMetalComponentDefinition) As Double
+    Try
+        Dim box As Box = smDef.FlatPattern.RangeBox
+        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X) * 10.0
+        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y) * 10.0
+        Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z) * 10.0
+        Return Math.Max(dx, Math.Max(dy, dz))
+    Catch
+        Return 0
     End Try
 End Function
 
-Function PedirCodigoPlegado(ByVal partDoc As PartDocument) As String
 
-    Dim valorAnterior As String = LeerPropiedadUsuario(partDoc, "COD_PLEGADO")
-    Dim valor As String = ""
-
-    Do
-        valor = Microsoft.VisualBasic.Interaction.InputBox( _
-            "Introduce el codigo de plegado que debe aparecer en el plano." & vbCrLf & vbCrLf & _
-            "Se mostrara con el formato:" & vbCrLf & _
-            "COD PLEG" & vbCrLf & _
-            "0000", _
-            "Codigo de plegado", _
-            valorAnterior)
-
-        valor = Trim(valor)
-
-        If valor <> "" Then
-            Return valor
-        End If
-
-        Dim respuesta As System.Windows.Forms.DialogResult = _
-            System.Windows.Forms.MessageBox.Show( _
-                "No has introducido ningun codigo de plegado." & vbCrLf & vbCrLf & _
-                "¿Quieres continuar sin el rotulo COD PLEG?", _
-                "Codigo de plegado", _
-                System.Windows.Forms.MessageBoxButtons.YesNo, _
-                System.Windows.Forms.MessageBoxIcon.Question)
-
-        If respuesta = System.Windows.Forms.DialogResult.Yes Then
-            Return ""
-        End If
-
-    Loop
-
-End Function
+'---------------------------------------------------------
+' CARPETAS PLANOS PRODUCCION POR RANGO DE CODIGO
+'---------------------------------------------------------
 
 Function ObtenerCarpetaPlanoIDWPorCodigo(ByVal rutaBasePlanosIDW As String, _
                                          ByVal codigo As String) As String
@@ -1110,7 +1670,7 @@ Function ObtenerCarpetaPlanoIDWPorCodigo(ByVal rutaBasePlanosIDW As String, _
     End If
 
     If Not System.IO.Directory.Exists(rutaBasePlanosIDW) Then
-        Throw New Exception("No existe la ruta base de PLANOS PRODUCCION.")
+        Throw New Exception("No existe la ruta base de PLANOS PRODUCCION:" & vbCrLf & rutaBasePlanosIDW & vbCrLf & vbCrLf & "Revisa que la unidad Q: este conectada.")
     End If
 
     Dim nombreCarpeta As String = ObtenerNombreCarpetaRangoIDWExistenteOPreferido(rutaBasePlanosIDW, codigo)
@@ -1122,6 +1682,7 @@ Function ObtenerCarpetaPlanoIDWPorCodigo(ByVal rutaBasePlanosIDW As String, _
     Return System.IO.Path.Combine(rutaBasePlanosIDW, nombreCarpeta)
 
 End Function
+
 
 Function ObtenerNombreCarpetaRangoIDWExistenteOPreferido(ByVal rutaBasePlanosIDW As String, _
                                                          ByVal codigo As String) As String
@@ -1155,12 +1716,26 @@ Function ObtenerNombreCarpetaRangoIDWExistenteOPreferido(ByVal rutaBasePlanosIDW
     If numero < 0 Then Return ""
 
     If prefijoA Then
+        ' La estructura A visible es por bloques de 1000:
+        ' A00000-A00999 IDW
+        ' A01000-A01999 IDW
+        ' A02000-A02999 IDW
         Dim carpetaA As String = CrearNombreRango(numero, 1000, True)
+
         If System.IO.Directory.Exists(System.IO.Path.Combine(rutaBasePlanosIDW, carpetaA)) Then
             Return carpetaA
         End If
+
         Return carpetaA
     End If
+
+    ' En codigos numericos puede haber instalaciones con bloque de 1000
+    ' y tambien estructura por bloque de 500, como se ve en PLANOS PRODUCCION.
+    '
+    ' Prioridad:
+    ' 1) Si existe carpeta de 1000, usarla. Ejemplo pedido: 44000-44999 IDW.
+    ' 2) Si no existe, buscar carpeta de 500. Ejemplo estructura vista: 84500-84999 IDW.
+    ' 3) Si no existe ninguna, crear/preparar carpeta de 1000.
 
     Dim carpeta1000 As String = CrearNombreRango(numero, 1000, False)
     If System.IO.Directory.Exists(System.IO.Path.Combine(rutaBasePlanosIDW, carpeta1000)) Then
@@ -1175,6 +1750,7 @@ Function ObtenerNombreCarpetaRangoIDWExistenteOPreferido(ByVal rutaBasePlanosIDW
     Return carpeta1000
 
 End Function
+
 
 Function CrearNombreRango(ByVal numero As Integer, _
                           ByVal bloque As Integer, _
@@ -1195,6 +1771,7 @@ Function CrearNombreRango(ByVal numero As Integer, _
     Return inicioTxt & "-" & finTxt & " IDW"
 
 End Function
+
 
 Function NormalizarCodigoParaRango(ByVal codigo As String) As String
 
@@ -1221,6 +1798,7 @@ Function NormalizarCodigoParaRango(ByVal codigo As String) As String
 
 End Function
 
+
 Function ExtraerDigitosIniciales(ByVal texto As String) As String
 
     If texto Is Nothing Then Return ""
@@ -1243,6 +1821,7 @@ Function ExtraerDigitosIniciales(ByVal texto As String) As String
 
 End Function
 
+
 Function QuitarIndiceInventorLocal(ByVal txt As String) As String
 
     If txt Is Nothing Then Return ""
@@ -1263,6 +1842,7 @@ Function QuitarIndiceInventorLocal(ByVal txt As String) As String
 
 End Function
 
+
 Function QuitarExtensionInventorLocal(ByVal txt As String) As String
 
     If txt Is Nothing Then Return ""
@@ -1278,52 +1858,463 @@ Function QuitarExtensionInventorLocal(ByVal txt As String) As String
 
 End Function
 
-Function DetectarRALDesdeNombre(ByVal nombreFichero As String) As String
+'---------------------------------------------------------
+' VALIDACIONES Y DATOS
+'---------------------------------------------------------
 
-    If nombreFichero Is Nothing Then Return ""
+Function EsPiezaChapa(ByVal p As PartDocument) As Boolean
+    If p Is Nothing Then Return False
+    Return TypeOf p.ComponentDefinition Is SheetMetalComponentDefinition
+End Function
 
-    Dim n As String = nombreFichero.ToUpper()
+Function ObtenerEspesorChapa(ByVal p As PartDocument) As String
+    Try
+        Dim smDef As SheetMetalComponentDefinition = TryCast(p.ComponentDefinition, SheetMetalComponentDefinition)
+        If smDef Is Nothing Then Return ""
 
-    n = n.Replace(" ", "")
-    n = n.Replace("-", "")
-    n = n.Replace("_", "")
-    n = n.Replace(".", "")
+        Dim espesorCm As Double = smDef.Thickness.Value
+        Dim espesorMm As Double = espesorCm * 10.0
+        Return Math.Round(espesorMm, 2).ToString().Replace(",", ".") & " mm"
+    Catch
+        Return ""
+    End Try
+End Function
 
-    If n.Contains("RAL9005") Then Return "9005"
-    If n.Contains("R9005") Then Return "9005"
 
-    If n.Contains("RAL7012") Then Return "7012"
-    If n.Contains("R7012") Then Return "7012"
+Function LimitarEscalaMaximaPorDesarrollo(ByVal smDef As SheetMetalComponentDefinition, _
+                                           ByVal sheet As Sheet, _
+                                           ByVal escalaActual As Double) As Double
+    Try
+        If smDef Is Nothing Then Return escalaActual
+        If sheet Is Nothing Then Return escalaActual
+        If escalaActual <= 0 Then Return escalaActual
 
-    Return ""
+        Dim flatW As Double = 1
+        Dim flatH As Double = 1
+        ObtenerDimensionesDesarrollo(smDef, flatW, flatH)
+
+        Dim mayor As Double = Math.Max(flatW, flatH)
+
+        ' Inventor trabaja en cm.
+        ' 90 cm = 900 mm aprox.
+        If sheet.Width > sheet.Height Then
+            If mayor >= 90 AndAlso escalaActual > 0.1666666667 Then
+                Return 0.1666666667  ' 1:6
+            End If
+        End If
+
+        Return escalaActual
+
+    Catch
+        Return escalaActual
+    End Try
+End Function
+
+
+Function CalcularEscalaGeneralPlanoPlegado(ByVal partDoc As PartDocument, _
+                                           ByVal smDef As SheetMetalComponentDefinition, _
+                                           ByVal sheet As Sheet, _
+                                           ByVal escalasDisponibles() As Double) As Double
+    Try
+        '---------------------------------------------------------
+        ' v10.12 - ESCALA EQUILIBRADA
+        '---------------------------------------------------------
+        '
+        ' v10.10 fallaba por conservadora: salia 1:9 / 1:15.
+        ' v10.11 fallaba por agresiva: salia 1:5 y las vistas invadian cajetin.
+        '
+        ' Criterio nuevo:
+        ' - El desarrollo sigue siendo la vista principal del plano.
+        ' - Pero la escala tambien valida que las vistas plegadas entren debajo
+        '   sin invadir cajetin ni pisarse con la isometrica.
+        ' - Se usa la mayor escala normalizada 1:X que entra en TODO el layout.
+        '
+        ' Para la pieza larga mostrada, el resultado esperado es aprox. 1:6,
+        ' no 1:9 ni 1:5.
+
+        If smDef Is Nothing Then Return 0.1
+        If sheet Is Nothing Then Return 0.1
+
+        Dim anchoHoja As Double = sheet.Width
+        Dim altoHoja As Double = sheet.Height
+        Dim hojaApaisada As Boolean = anchoHoja > altoHoja
+
+        Dim yCajetinSup As Double = ObtenerYSuperiorCajetin(sheet)
+
+        Dim margenX As Double = 1.5
+        Dim margenSuperior As Double = 1.0
+        Dim margenCajetin As Double = 1.2
+
+        Dim anchoUtil As Double = anchoHoja - (2 * margenX)
+        Dim altoUtil As Double = altoHoja - yCajetinSup - margenSuperior - margenCajetin
+
+        If anchoUtil <= 5 Then anchoUtil = anchoHoja * 0.90
+        If altoUtil <= 5 Then altoUtil = altoHoja * 0.68
+
+        Dim flatW As Double = 1
+        Dim flatH As Double = 1
+        ObtenerDimensionesDesarrollo(smDef, flatW, flatH)
+
+        Dim modMayor As Double = 1
+        Dim modMedia As Double = 1
+        Dim modMenor As Double = 1
+        ObtenerDimensionesModeloOrdenadas(partDoc, modMayor, modMedia, modMenor)
+
+        If hojaApaisada Then
+
+            '---------------------------------------------------------
+            ' ZONAS REALES DEL LAYOUT APAISADO
+            '---------------------------------------------------------
+            ' Arriba izquierda: desarrollo + cotas.
+            ' Centro superior: simbolo de datos.
+            ' Debajo izquierda: vista principal / superior / lateral.
+            ' Derecha: isometrica, sin invadir cajetin.
+            '
+            ' Estas zonas son deliberadamente realistas, no excesivamente
+            ' conservadoras, pero impiden que 1:5 invada el cajetin.
+
+            Dim zonaDesW As Double = anchoUtil * 0.54
+            Dim zonaDesH As Double = altoUtil * 0.44
+
+            Dim zonaPlegW As Double = anchoUtil * 0.42
+            Dim zonaPlegH As Double = altoUtil * 0.36
+
+            Dim zonaLatW As Double = anchoUtil * 0.20
+            Dim zonaLatH As Double = altoUtil * 0.50
+
+            Dim zonaIsoW As Double = anchoUtil * 0.36
+            Dim zonaIsoH As Double = altoUtil * 0.46
+
+            For Each s As Double In escalasDisponibles
+
+                Dim cabeDes As Boolean = CabeRectanguloEnZonaEscalaReal(flatW, flatH, zonaDesW, zonaDesH, s, True)
+
+                ' Vista principal plegada: normalmente mayor x media.
+                Dim cabePleg As Boolean = CabeRectanguloEnZonaEscalaReal(modMayor, modMedia, zonaPlegW, zonaPlegH, s, True)
+
+                ' Vista lateral/seccion: puede ser media x menor o media x mayor
+                ' segun orientacion de la pieza. Usamos una validacion prudente.
+                Dim cabeLat As Boolean = CabeRectanguloEnZonaEscalaReal(modMedia, modMayor, zonaLatW, zonaLatH, s, True)
+
+                ' Isometrica: necesita margen para no pisar cajetin.
+                Dim cabeIso As Boolean = CabeRectanguloEnZonaEscalaReal(modMayor, modMedia, zonaIsoW, zonaIsoH, s, True)
+
+                If cabeDes AndAlso cabePleg AndAlso cabeLat AndAlso cabeIso Then
+                    Return s
+                End If
+
+            Next
+
+        Else
+
+            Dim zonaDesWV As Double = anchoUtil * 0.72
+            Dim zonaDesHV As Double = altoUtil * 0.32
+
+            Dim zonaPlegWV As Double = anchoUtil * 0.42
+            Dim zonaPlegHV As Double = altoUtil * 0.24
+
+            For Each s As Double In escalasDisponibles
+
+                Dim cabeDesV As Boolean = CabeRectanguloEnZonaEscalaReal(flatW, flatH, zonaDesWV, zonaDesHV, s, True)
+                Dim cabePlegV As Boolean = CabeRectanguloEnZonaEscalaReal(modMayor, modMedia, zonaPlegWV, zonaPlegHV, s, True)
+
+                If cabeDesV AndAlso cabePlegV Then
+                    Return s
+                End If
+
+            Next
+
+        End If
+
+        Return escalasDisponibles(escalasDisponibles.Length - 1)
+
+    Catch
+        Return 0.1
+    End Try
+End Function
+
+
+Function CabeRectanguloEnZonaEscalaReal(ByVal w As Double, _
+                                        ByVal h As Double, _
+                                        ByVal zonaW As Double, _
+                                        ByVal zonaH As Double, _
+                                        ByVal escala As Double, _
+                                        ByVal permitirGiro As Boolean) As Boolean
+    Try
+        If w <= 0 Or h <= 0 Or zonaW <= 0 Or zonaH <= 0 Or escala <= 0 Then Return False
+
+        ' Margen más realista que el anterior.
+        ' Antes se penalizaba demasiado la pieza y bajaba la escala.
+        Dim margenCotas As Double = 0.92
+
+        Dim zW As Double = zonaW * margenCotas
+        Dim zH As Double = zonaH * margenCotas
+
+        If (w * escala <= zW) AndAlso (h * escala <= zH) Then Return True
+
+        If permitirGiro Then
+            If (h * escala <= zW) AndAlso (w * escala <= zH) Then Return True
+        End If
+
+        Return False
+
+    Catch
+        Return False
+    End Try
+End Function
+
+
+Function CabeRectanguloEnZona(ByVal w As Double, _
+                              ByVal h As Double, _
+                              ByVal zonaW As Double, _
+                              ByVal zonaH As Double, _
+                              ByVal escala As Double, _
+                              ByVal permitirGiro As Boolean) As Boolean
+    Try
+        If w <= 0 Or h <= 0 Or zonaW <= 0 Or zonaH <= 0 Or escala <= 0 Then Return False
+
+        ' Factor de margen para cotas y separaciones.
+        Dim margenCotas As Double = 0.92
+
+        Dim zW As Double = zonaW * margenCotas
+        Dim zH As Double = zonaH * margenCotas
+
+        If (w * escala <= zW) AndAlso (h * escala <= zH) Then Return True
+
+        If permitirGiro Then
+            If (h * escala <= zW) AndAlso (w * escala <= zH) Then Return True
+        End If
+
+        Return False
+
+    Catch
+        Return False
+    End Try
+End Function
+
+
+Sub ObtenerDimensionesDesarrollo(ByVal smDef As SheetMetalComponentDefinition, _
+                                 ByRef anchoFlat As Double, _
+                                 ByRef altoFlat As Double)
+    anchoFlat = 1
+    altoFlat = 1
+
+    Try
+        If Not smDef.HasFlatPattern Then
+            smDef.Unfold()
+            Try
+                smDef.FlatPattern.ExitEdit()
+            Catch
+            End Try
+        End If
+
+        Dim box As Box = smDef.FlatPattern.RangeBox
+
+        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X)
+        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y)
+        Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z)
+
+        ' En desarrollo puede venir en XY, XZ o YZ segun orientacion interna.
+        ' Cogemos las dos dimensiones mayores para evitar que una Z casi nula falsee el calculo.
+        Dim a As Double = Math.Max(dx, Math.Max(dy, dz))
+        Dim c As Double = Math.Min(dx, Math.Min(dy, dz))
+        Dim b As Double = dx + dy + dz - a - c
+
+        If a <= 0 Then a = 1
+        If b <= 0 Then b = Math.Max(c, 1)
+
+        anchoFlat = a
+        altoFlat = b
+
+    Catch
+        anchoFlat = 1
+        altoFlat = 1
+    End Try
+End Sub
+
+
+Sub ObtenerDimensionesModeloOrdenadas(ByVal partDoc As PartDocument, _
+                                      ByRef mayor As Double, _
+                                      ByRef media As Double, _
+                                      ByRef menor As Double)
+    mayor = 1
+    media = 1
+    menor = 1
+
+    Try
+        Dim box As Box = partDoc.ComponentDefinition.RangeBox
+
+        Dim dx As Double = Math.Abs(box.MaxPoint.X - box.MinPoint.X)
+        Dim dy As Double = Math.Abs(box.MaxPoint.Y - box.MinPoint.Y)
+        Dim dz As Double = Math.Abs(box.MaxPoint.Z - box.MinPoint.Z)
+
+        mayor = Math.Max(dx, Math.Max(dy, dz))
+        menor = Math.Min(dx, Math.Min(dy, dz))
+        media = dx + dy + dz - mayor - menor
+
+        If mayor <= 0 Then mayor = 1
+        If media <= 0 Then media = 1
+        If menor <= 0 Then menor = 1
+
+    Catch
+        mayor = 1
+        media = 1
+        menor = 1
+    End Try
+End Sub
+
+
+Function ObtenerYSuperiorCajetin(ByVal sheet As Sheet) As Double
+    Try
+        If sheet IsNot Nothing AndAlso sheet.TitleBlock IsNot Nothing Then
+            Return sheet.TitleBlock.RangeBox.MaxPoint.Y
+        End If
+    Catch
+    End Try
+
+    Try
+        Return sheet.Height * 0.18
+    Catch
+        Return 5
+    End Try
+End Function
+
+Function CalcularEscalaParaZona(ByVal smDef As SheetMetalComponentDefinition, _
+                                ByVal anchoZonaCm As Double, _
+                                ByVal altoZonaCm As Double, _
+                                ByVal escalasDisponibles() As Double) As Double
+    Try
+        Dim w As Double = 1
+        Dim h As Double = 1
+        ObtenerDimensionesDesarrollo(smDef, w, h)
+
+        For Each s As Double In escalasDisponibles
+            If CabeRectanguloEnZona(w, h, anchoZonaCm, altoZonaCm, s, True) Then Return s
+        Next
+
+        Return escalasDisponibles(escalasDisponibles.Length - 1)
+    Catch
+        Return 0.1
+    End Try
+End Function
+
+
+Function CalcularEscalaModeloPlegado(ByVal partDoc As PartDocument, _
+                                     ByVal anchoZonaCm As Double, _
+                                     ByVal altoZonaCm As Double, _
+                                     ByVal escalasDisponibles() As Double) As Double
+    Try
+        Dim mayor As Double = 1
+        Dim media As Double = 1
+        Dim menor As Double = 1
+
+        ObtenerDimensionesModeloOrdenadas(partDoc, mayor, media, menor)
+
+        For Each s As Double In escalasDisponibles
+            If CabeRectanguloEnZona(mayor, media, anchoZonaCm, altoZonaCm, s, True) Then Return s
+        Next
+
+        Return escalasDisponibles(escalasDisponibles.Length - 1)
+    Catch
+        Return 0.1
+    End Try
+End Function
+
+Function SubirUnPasoEscala(ByVal escalaActual As Double, ByVal escalasDisponibles() As Double) As Double
+    Try
+        Dim mejorIndice As Integer = escalasDisponibles.Length - 1
+        Dim mejorDiferencia As Double = 999999
+
+        For i As Integer = 0 To escalasDisponibles.Length - 1
+            Dim dif As Double = Math.Abs(escalasDisponibles(i) - escalaActual)
+            If dif < mejorDiferencia Then
+                mejorDiferencia = dif
+                mejorIndice = i
+            End If
+        Next
+
+        If mejorIndice > 0 Then
+            Return escalasDisponibles(mejorIndice - 1)
+        End If
+
+        Return escalasDisponibles(mejorIndice)
+    Catch
+        Return escalaActual
+    End Try
+End Function
+
+Function FormatearEscala(ByVal escala As Double) As String
+    Try
+        If escala <= 0 Then Return ""
+
+        Dim divisor As Double = 1 / escala
+        Dim divisorEntero As Integer = CInt(Math.Round(divisor, 0))
+
+        If divisorEntero < 1 Then divisorEntero = 1
+
+        Return "1:" & divisorEntero.ToString()
+    Catch
+        Return ""
+    End Try
+End Function
+
+ '---------------------------------------------------------
+' USUARIO ACTUAL DE INVENTOR / WINDOWS
+'---------------------------------------------------------
+
+Function ObtenerAutorActual(ByVal invApp As Inventor.Application) As String
+
+    Dim autor As String = ""
+
+    ' 1. Usuario configurado en:
+    '    Herramientas > Opciones de la aplicación > General > Nombre de usuario
+    Try
+        Dim opcionesGenerales As Object = invApp.GeneralOptions
+
+        Dim valorUsuario As Object = _
+            Microsoft.VisualBasic.Interaction.CallByName( _
+                opcionesGenerales, _
+                "UserName", _
+                Microsoft.VisualBasic.CallType.Get)
+
+        If valorUsuario IsNot Nothing Then
+            autor = Trim(CStr(valorUsuario))
+        End If
+    Catch
+        autor = ""
+    End Try
+
+    ' 2. Respaldo: usuario que ha iniciado sesión en Windows.
+    If autor = "" Then
+        Try
+            autor = Trim(System.Environment.UserName)
+        Catch
+            autor = ""
+        End Try
+    End If
+
+    ' 3. Último respaldo para no dejar vacío PLANO REALIZADO.
+    If autor = "" Then autor = "USUARIO"
+
+    Return autor
 
 End Function
 
-Function ObtenerCodigoPinturaPorRAL(ByVal ral As String, _
-                                    ByVal codigo9005 As String, _
-                                    ByVal codigo7012 As String) As String
 
-    If ral = "9005" Then Return codigo9005
-    If ral = "7012" Then Return codigo7012
-
-    Return ""
-
-End Function
+'---------------------------------------------------------
+' iPROPERTIES
+'---------------------------------------------------------
 
 Function LeerPropiedad(ByVal doc As Document, ByVal setName As String, ByVal propName As String) As String
-
     Try
         Dim ps As PropertySet = doc.PropertySets.Item(setName)
         Dim p As Inventor.Property = ps.Item(propName)
-
         If p Is Nothing Then Return ""
         If p.Value Is Nothing Then Return ""
-
         Return CStr(p.Value)
     Catch
         Return ""
     End Try
-
 End Function
 
 Function LeerPropiedadUsuario(ByVal doc As Document, ByVal propName As String) As String
@@ -1339,10 +2330,8 @@ Function LeerPropiedadUsuario(ByVal doc As Document, ByVal propName As String) A
 End Function
 
 Sub EscribirPropiedad(ByVal doc As Document, ByVal setName As String, ByVal propName As String, ByVal value As String)
-
     Try
         Dim ps As PropertySet = doc.PropertySets.Item(setName)
-
         Try
             Dim p As Inventor.Property = ps.Item(propName)
             p.Value = value
@@ -1350,14 +2339,11 @@ Sub EscribirPropiedad(ByVal doc As Document, ByVal setName As String, ByVal prop
         End Try
     Catch
     End Try
-
 End Sub
 
 Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, ByVal value As String)
-
     Try
         Dim ps As PropertySet = doc.PropertySets.Item("Inventor User Defined Properties")
-
         Try
             Dim p As Inventor.Property = ps.Item(propName)
             p.Value = value
@@ -1366,30 +2352,29 @@ Sub EscribirPropiedadUsuario(ByVal doc As Document, ByVal propName As String, By
         End Try
     Catch
     End Try
-
 End Sub
 
+'---------------------------------------------------------
+' UTILIDADES
+'---------------------------------------------------------
+
 Function LimpiarNombreArchivo(ByVal nombre As String) As String
-
     Dim invalidos() As Char = System.IO.Path.GetInvalidFileNameChars()
-
     For Each c As Char In invalidos
         nombre = nombre.Replace(c, "_"c)
     Next
-
     nombre = nombre.Replace("  ", " ").Trim()
-
-    If nombre = "" Then nombre = "PLANO"
-
+    If nombre = "" Then nombre = "PLANO_PLEGADO"
     Return nombre
-
 End Function
 
-Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaPDF As String)
+'---------------------------------------------------------
+' EXPORTACION PDF / DWF
+'---------------------------------------------------------
 
+Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaPDF As String)
     Try
         Dim pdfAddIn As TranslatorAddIn = invApp.ApplicationAddIns.ItemById("{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}")
-
         Dim context As TranslationContext = invApp.TransientObjects.CreateTranslationContext()
         context.Type = IOMechanismEnum.kFileBrowseIOMechanism
 
@@ -1404,18 +2389,15 @@ Sub ExportarPDF(ByVal invApp As Inventor.Application, ByVal drawingDoc As Drawin
 
         Dim data As DataMedium = invApp.TransientObjects.CreateDataMedium()
         data.FileName = rutaPDF
-
         pdfAddIn.SaveCopyAs(drawingDoc, context, options, data)
-    Catch
+    Catch ex As Exception
+        Throw New Exception("Error exportando PDF: " & ex.Message)
     End Try
-
 End Sub
 
 Sub ExportarDWF(ByVal invApp As Inventor.Application, ByVal drawingDoc As DrawingDocument, ByVal rutaDWF As String)
-
     Try
         Dim dwfAddIn As TranslatorAddIn = invApp.ApplicationAddIns.ItemById("{0AC6FD95-2F4D-42CE-8BE0-8AEA580399E4}")
-
         Dim context As TranslationContext = invApp.TransientObjects.CreateTranslationContext()
         context.Type = IOMechanismEnum.kFileBrowseIOMechanism
 
@@ -1428,90 +2410,141 @@ Sub ExportarDWF(ByVal invApp As Inventor.Application, ByVal drawingDoc As Drawin
 
         Dim data As DataMedium = invApp.TransientObjects.CreateDataMedium()
         data.FileName = rutaDWF
-
         dwfAddIn.SaveCopyAs(drawingDoc, context, options, data)
     Catch
+        ' No bloqueamos si falla DWF.
     End Try
-
 End Sub
 
-Function SafeFileName(ByVal name As String) As String
-    Dim invalidos() As Char = System.IO.Path.GetInvalidFileNameChars()
-    For Each c As Char In invalidos
-        name = name.Replace(c, "_"c)
-    Next
-    Return name.Trim()
-End Function
-
-Function GetUniqueFilePath(ByVal path As String) As String
-    If Not System.IO.File.Exists(path) Then Return path
-
-    Dim dir As String = System.IO.Path.GetDirectoryName(path)
-    Dim name As String = System.IO.Path.GetFileNameWithoutExtension(path)
-    Dim ext As String = System.IO.Path.GetExtension(path)
-
-    For i As Integer = 1 To 99
-        Dim newPath As String = System.IO.Path.Combine(dir, name & "_" & i.ToString("00") & ext)
-        If Not System.IO.File.Exists(newPath) Then Return newPath
-    Next
-
-    Return System.IO.Path.Combine(dir, name & "_" & Now.ToString("yyyyMMdd_HHmmss") & ext)
-End Function
-
-Function FormatearEscala(ByVal escala As Double) As String
-    Try
-        If escala <= 0 Then Return ""
-        Dim divisor As Double = 1 / escala
-        Dim divisorEntero As Integer = CInt(Math.Round(divisor, 0))
-        If divisorEntero < 1 Then divisorEntero = 1
-        Return "1:" & divisorEntero.ToString()
-    Catch
-        Return ""
-    End Try
-End Function
-
 '---------------------------------------------------------
-' INSERTAR RÓTULO COD PLEG EN PLANO
+' CLASE DIÁLOGO DE SELECCIÓN DE PLANO
 '---------------------------------------------------------
 
-Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
-                                ByVal tg As TransientGeometry, _
-                                ByVal punto As Point2d, _
-                                ByVal codigo As String)
+Class FormularioSeleccionPlano
+    Inherits System.Windows.Forms.Form
 
-    Try
-        If sheet Is Nothing Then Exit Sub
-        If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
+    Public PlanoSeleccionado As String = ""
+    Public IncluirCodigoPlegado As Boolean = True
+    Private rbPlegado As System.Windows.Forms.RadioButton
+    Private rbPintura As System.Windows.Forms.RadioButton
+    Private rbSoldadura As System.Windows.Forms.RadioButton
+    Private rbDespiece As System.Windows.Forms.RadioButton
+    Private chkCodigoPlegado As System.Windows.Forms.CheckBox
+    Private lblOpciones As System.Windows.Forms.Label
 
-        Dim textoFormateado As String = _
-            "<StyleOverride FontSize='0.35' Bold='False'>COD PLEG</StyleOverride>" & _
-            "<Br/>" & _
-            "<StyleOverride FontSize='0.80' Bold='False'>" & _
-            EscaparTextoInventor(Trim(codigo)) & _
-            "</StyleOverride>"
+    Sub New()
+        Me.Text = "Seleccionar Plano a Generar"
+        Me.Width = 380
+        Me.Height = 420
+        Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog
+        Me.MaximizeBox = False
+        Me.MinimizeBox = False
 
-        Dim nota As GeneralNote = _
-            sheet.DrawingNotes.GeneralNotes.AddFitted(punto, textoFormateado)
+        Dim lblTitulo As New System.Windows.Forms.Label()
+        lblTitulo.Text = "Elige el tipo de plano:"
+        lblTitulo.Top = 15
+        lblTitulo.Left = 20
+        lblTitulo.Width = 300
+        lblTitulo.Height = 25
+        Me.Controls.Add(lblTitulo)
 
-        Try
-            nota.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
-        Catch
-        End Try
+        rbPlegado = New System.Windows.Forms.RadioButton()
+        rbPlegado.Text = "Plano de Plegado"
+        rbPlegado.Top = 50
+        rbPlegado.Left = 30
+        rbPlegado.Width = 280
+        rbPlegado.Height = 25
+        AddHandler rbPlegado.CheckedChanged, AddressOf RadioButton_CheckedChanged
+        Me.Controls.Add(rbPlegado)
 
-    Catch ex As Exception
-        Throw New Exception("No se ha podido insertar el rotulo COD PLEG. Detalle: " & ex.Message)
-    End Try
+        rbPintura = New System.Windows.Forms.RadioButton()
+        rbPintura.Text = "Plano de Pintura RAL"
+        rbPintura.Top = 85
+        rbPintura.Left = 30
+        rbPintura.Width = 280
+        rbPintura.Height = 25
+        AddHandler rbPintura.CheckedChanged, AddressOf RadioButton_CheckedChanged
+        Me.Controls.Add(rbPintura)
 
-End Sub
+        rbSoldadura = New System.Windows.Forms.RadioButton()
+        rbSoldadura.Text = "Plano de Soldadura"
+        rbSoldadura.Top = 120
+        rbSoldadura.Left = 30
+        rbSoldadura.Width = 280
+        rbSoldadura.Height = 25
+        AddHandler rbSoldadura.CheckedChanged, AddressOf RadioButton_CheckedChanged
+        Me.Controls.Add(rbSoldadura)
 
-Function EscaparTextoInventor(ByVal texto As String) As String
-    If texto Is Nothing Then Return ""
+        rbDespiece = New System.Windows.Forms.RadioButton()
+        rbDespiece.Text = "Despiece Visual"
+        rbDespiece.Top = 155
+        rbDespiece.Left = 30
+        rbDespiece.Width = 280
+        rbDespiece.Height = 25
+        rbDespiece.Checked = True
+        AddHandler rbDespiece.CheckedChanged, AddressOf RadioButton_CheckedChanged
+        Me.Controls.Add(rbDespiece)
 
-    texto = texto.Replace("&", "&amp;")
-    texto = texto.Replace("<", "&lt;")
-    texto = texto.Replace(">", "&gt;")
-    texto = texto.Replace("""", "&quot;")
-    texto = texto.Replace("'", "&apos;")
+        lblOpciones = New System.Windows.Forms.Label()
+        lblOpciones.Text = "Opciones de Plegado:"
+        lblOpciones.Top = 195
+        lblOpciones.Left = 30
+        lblOpciones.Width = 280
+        lblOpciones.Height = 20
+        lblOpciones.Visible = False
+        Me.Controls.Add(lblOpciones)
 
-    Return texto
-End Function
+        chkCodigoPlegado = New System.Windows.Forms.CheckBox()
+        chkCodigoPlegado.Text = "Incluir rótulo COD PLEGADO"
+        chkCodigoPlegado.Top = 220
+        chkCodigoPlegado.Left = 40
+        chkCodigoPlegado.Width = 280
+        chkCodigoPlegado.Height = 25
+        chkCodigoPlegado.Checked = True
+        chkCodigoPlegado.Visible = False
+        Me.Controls.Add(chkCodigoPlegado)
+
+        Dim btnEjecutar As New System.Windows.Forms.Button()
+        btnEjecutar.Text = "Ejecutar"
+        btnEjecutar.Width = 90
+        btnEjecutar.Height = 30
+        btnEjecutar.Top = 290
+        btnEjecutar.Left = 95
+        btnEjecutar.DialogResult = System.Windows.Forms.DialogResult.OK
+        Me.Controls.Add(btnEjecutar)
+        Me.AcceptButton = btnEjecutar
+
+        Dim btnCancelar As New System.Windows.Forms.Button()
+        btnCancelar.Text = "Cancelar"
+        btnCancelar.Width = 90
+        btnCancelar.Height = 30
+        btnCancelar.Top = 290
+        btnCancelar.Left = 195
+        btnCancelar.DialogResult = System.Windows.Forms.DialogResult.Cancel
+        Me.Controls.Add(btnCancelar)
+        Me.CancelButton = btnCancelar
+    End Sub
+
+    Private Sub RadioButton_CheckedChanged(ByVal sender As Object, ByVal e As EventArgs)
+        Dim mostrarOpciones As Boolean = rbPlegado.Checked
+        lblOpciones.Visible = mostrarOpciones
+        chkCodigoPlegado.Visible = mostrarOpciones
+    End Sub
+
+    Protected Overrides Sub OnFormClosing(ByVal e As System.Windows.Forms.FormClosingEventArgs)
+        If Me.DialogResult = System.Windows.Forms.DialogResult.OK Then
+            If rbPlegado.Checked Then
+                PlanoSeleccionado = "PLEGADO"
+                IncluirCodigoPlegado = chkCodigoPlegado.Checked
+            ElseIf rbPintura.Checked Then
+                PlanoSeleccionado = "PINTURA"
+            ElseIf rbSoldadura.Checked Then
+                PlanoSeleccionado = "SOLDADURA"
+            ElseIf rbDespiece.Checked Then
+                PlanoSeleccionado = "DESPIECE"
+            End If
+        End If
+        MyBase.OnFormClosing(e)
+    End Sub
+End Class
