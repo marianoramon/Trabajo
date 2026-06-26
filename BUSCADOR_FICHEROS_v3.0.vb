@@ -245,7 +245,12 @@ Public Class BuscadorFicherosForm
             If System.IO.File.Exists(a) Then
                 Dim ls() As String = System.IO.File.ReadAllLines(a)
                 If ls.Length >= 1 AndAlso ls(0).Trim() <> "" Then ruta = ls(0).Trim()
-                If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
+                If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then
+                    Dim carpetaGuardada As String = ls(1).Trim()
+                    If System.IO.Directory.Exists(carpetaGuardada) Then
+                        indice = carpetaGuardada
+                    End If
+                End If
                 If ls.Length >= 3 Then pn = (ls(2).Trim() = "1")
             End If
         Catch
