@@ -1218,7 +1218,6 @@ Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
 
         Try
             nota1.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
-            nota1.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextBottom
         Catch
         End Try
 
@@ -1229,7 +1228,6 @@ Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
 
         Try
             nota2.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
-            nota2.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextTop
         Catch
         End Try
 
