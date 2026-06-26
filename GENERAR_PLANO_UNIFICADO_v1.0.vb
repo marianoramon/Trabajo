@@ -62,6 +62,14 @@ Public Class FormularioSeleccionPlano
     Public Property PlantillaSeleccionada As String = "Metalplak Standard"
     Public Property GenerarJPG As Boolean = False
 
+    Private rbPlegado As System.Windows.Forms.RadioButton
+    Private rbPintura As System.Windows.Forms.RadioButton
+    Private rbSoldadura As System.Windows.Forms.RadioButton
+    Private rbDespiece As System.Windows.Forms.RadioButton
+    Private rbPlantilla1 As System.Windows.Forms.RadioButton
+    Private rbPlantilla2 As System.Windows.Forms.RadioButton
+    Private chkJPG As System.Windows.Forms.CheckBox
+
     Public Sub New()
         Me.Text = "Generar Plano"
         Me.Width = 450
@@ -88,17 +96,16 @@ Public Class FormularioSeleccionPlano
         gbTipoPlano.Width = 400
         gbTipoPlano.Height = 130
 
-        Dim rbPlegado As New System.Windows.Forms.RadioButton()
+        rbPlegado = New System.Windows.Forms.RadioButton()
         rbPlegado.Text = "Plegado (Chapa)"
         rbPlegado.Left = 30
         rbPlegado.Top = 30
         rbPlegado.Width = 200
         rbPlegado.Checked = True
         rbPlegado.Tag = "PLEGADO"
-        AddHandler rbPlegado.CheckedChanged, Sub() ActualizarOpciones()
         gbTipoPlano.Controls.Add(rbPlegado)
 
-        Dim rbPintura As New System.Windows.Forms.RadioButton()
+        rbPintura = New System.Windows.Forms.RadioButton()
         rbPintura.Text = "Pintura (RAL)"
         rbPintura.Left = 30
         rbPintura.Top = 60
@@ -106,7 +113,7 @@ Public Class FormularioSeleccionPlano
         rbPintura.Tag = "PINTURA"
         gbTipoPlano.Controls.Add(rbPintura)
 
-        Dim rbSoldadura As New System.Windows.Forms.RadioButton()
+        rbSoldadura = New System.Windows.Forms.RadioButton()
         rbSoldadura.Text = "Soldadura"
         rbSoldadura.Left = 30
         rbSoldadura.Top = 90
@@ -114,7 +121,7 @@ Public Class FormularioSeleccionPlano
         rbSoldadura.Tag = "SOLDADURA"
         gbTipoPlano.Controls.Add(rbSoldadura)
 
-        Dim rbDespiece As New System.Windows.Forms.RadioButton()
+        rbDespiece = New System.Windows.Forms.RadioButton()
         rbDespiece.Text = "Despiece Visual"
         rbDespiece.Left = 30
         rbDespiece.Top = 120
@@ -132,7 +139,7 @@ Public Class FormularioSeleccionPlano
         gbPlantilla.Width = 400
         gbPlantilla.Height = 80
 
-        Dim rbPlantilla1 As New System.Windows.Forms.RadioButton()
+        rbPlantilla1 = New System.Windows.Forms.RadioButton()
         rbPlantilla1.Text = "Metalplak Standard (Recomendado)"
         rbPlantilla1.Left = 30
         rbPlantilla1.Top = 30
@@ -141,7 +148,7 @@ Public Class FormularioSeleccionPlano
         rbPlantilla1.Tag = "Standard"
         gbPlantilla.Controls.Add(rbPlantilla1)
 
-        Dim rbPlantilla2 As New System.Windows.Forms.RadioButton()
+        rbPlantilla2 = New System.Windows.Forms.RadioButton()
         rbPlantilla2.Text = "Metalplak Alternativa"
         rbPlantilla2.Left = 30
         rbPlantilla2.Top = 60
@@ -152,7 +159,7 @@ Public Class FormularioSeleccionPlano
         Me.Controls.Add(gbPlantilla)
 
         ' CheckBox para JPG (visible solo si Plegado esta seleccionado)
-        Dim chkJPG As New System.Windows.Forms.CheckBox()
+        chkJPG = New System.Windows.Forms.CheckBox()
         chkJPG.Text = "Generar JPG de corte automaticamente"
         chkJPG.Left = 20
         chkJPG.Top = 295
@@ -169,7 +176,7 @@ Public Class FormularioSeleccionPlano
         btnOK.Top = 335
         btnOK.Width = 90
         btnOK.Height = 30
-        AddHandler btnOK.Click, Sub(s, e) BtnOK_Click(s, e, rbPlegado, rbPintura, rbSoldadura, rbDespiece, rbPlantilla1, rbPlantilla2, chkJPG)
+        AddHandler btnOK.Click, AddressOf BtnOK_Click
         Me.Controls.Add(btnOK)
 
         Dim btnCancel As New System.Windows.Forms.Button()
@@ -184,19 +191,9 @@ Public Class FormularioSeleccionPlano
     End Sub
 
     Private Sub ActualizarOpciones()
-        ' Actualizacion dinamica si es necesaria
     End Sub
 
-    Private Sub BtnOK_Click(s As Object, e As System.EventArgs,
-                           rbPlegado As System.Windows.Forms.RadioButton,
-                           rbPintura As System.Windows.Forms.RadioButton,
-                           rbSoldadura As System.Windows.Forms.RadioButton,
-                           rbDespiece As System.Windows.Forms.RadioButton,
-                           rbPlantilla1 As System.Windows.Forms.RadioButton,
-                           rbPlantilla2 As System.Windows.Forms.RadioButton,
-                           chkJPG As System.Windows.Forms.CheckBox)
-
-        ' Determinar tipo de plano seleccionado
+    Private Sub BtnOK_Click(s As Object, e As System.EventArgs)
         If rbPlegado.Checked Then
             TipoPlanoSeleccionado = "PLEGADO"
         ElseIf rbPintura.Checked Then
@@ -207,19 +204,16 @@ Public Class FormularioSeleccionPlano
             TipoPlanoSeleccionado = "DESPIECE"
         End If
 
-        ' Determinar plantilla
         If rbPlantilla1.Checked Then
             PlantillaSeleccionada = "Metalplak Standard"
         ElseIf rbPlantilla2.Checked Then
             PlantillaSeleccionada = "Metalplak Alternative"
         End If
 
-        ' Generar JPG solo si es Plegado y esta marcado
         GenerarJPG = (TipoPlanoSeleccionado = "PLEGADO") AndAlso chkJPG.Checked
 
         Me.DialogResult = System.Windows.Forms.DialogResult.OK
         Me.Close()
-
     End Sub
 
 End Class
