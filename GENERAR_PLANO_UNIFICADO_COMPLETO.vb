@@ -1212,22 +1212,12 @@ Sub InsertarRotuloCodigoPlegado(ByVal sheet As Sheet, _
         If sheet Is Nothing Then Exit Sub
         If codigo Is Nothing OrElse Trim(codigo) = "" Then Exit Sub
 
-        ' Insertar etiqueta "COD PLEG"
-        Dim texto1 As String = "COD PLEG"
-        Dim nota1 As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddTextToPoint(punto, texto1)
+        ' Insertar etiqueta "COD PLEG" y código como una sola nota
+        Dim textoCompleto As String = "COD PLEG" & vbCrLf & Trim(codigo)
+        Dim nota As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddFitted(punto, textoCompleto)
 
         Try
-            nota1.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
-        Catch
-        End Try
-
-        ' Insertar código debajo (0.8 cm = 8 mm hacia abajo)
-        Dim puntoCodigo As Point2d = tg.CreatePoint2d(punto.X, punto.Y - 0.8)
-        Dim texto2 As String = Trim(codigo)
-        Dim nota2 As GeneralNote = sheet.DrawingNotes.GeneralNotes.AddTextToPoint(puntoCodigo, texto2)
-
-        Try
-            nota2.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
+            nota.HorizontalJustification = HorizontalTextAlignmentEnum.kAlignTextCenter
         Catch
         End Try
 
