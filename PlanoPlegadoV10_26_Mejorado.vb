@@ -1,4 +1,4 @@
-﻿Sub Main()
+Sub Main()
 
     ' PLEGADO v10.26 - escala normalizada maxima real y SOLO REVISION SIN GUARDAR
     ' Layout normalizado segun planos correctos A4/A3.
