@@ -1,7 +1,14 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.0 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.1 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.1:
+    '  - Los planos del ensamblaje se guardan en la subcarpeta
+    '    02_PLANOS_PLEGADO creada dentro de la carpeta del ensamblaje.
+    '  - En modo ensamblaje NO se exporta PDF: solo IDW + DWF.
+    '  - Los solidos (piezas que no son de chapa) quedan explicitamente
+    '    excluidos de la generacion de planos.
     '
     ' Novedades v8.0:
     '  - MODO ENSAMBLAJE: si la regla se ejecuta desde un .IAM, detecta
@@ -357,9 +364,28 @@ Sub ProcesarEnsamblajePlegado( _
     Dim carpetaEnsamblaje As String = _
         System.IO.Path.GetDirectoryName(asmDoc.FullFileName)
 
+    ' v8.1: los planos van a la subcarpeta 02_PLANOS_PLEGADO dentro
+    ' de la carpeta del ensamblaje. Se crea si no existe.
+    Dim carpetaSalidaPlanos As String = _
+        System.IO.Path.Combine(carpetaEnsamblaje, "02_PLANOS_PLEGADO")
+
+    Try
+        If Not System.IO.Directory.Exists(carpetaSalidaPlanos) Then
+            System.IO.Directory.CreateDirectory(carpetaSalidaPlanos)
+        End If
+    Catch ex As Exception
+        MessageBox.Show( _
+            "No se ha podido crear la carpeta de salida:" & vbCrLf & _
+            carpetaSalidaPlanos & vbCrLf & vbCrLf & ex.Message, _
+            "Planos de plegado del ensamblaje")
+        Exit Sub
+    End Try
+
     '-----------------------------------------------------
     ' 1) RECOLECTAR PIEZAS DE CHAPA UNICAS
     '-----------------------------------------------------
+    ' Solo entran piezas de CHAPA. Los solidos normales (piezas .IPT
+    ' que no son SheetMetal) quedan excluidos de la generacion de planos.
     Dim piezas As New System.Collections.Generic.List(Of PartDocument)
     Dim codigos As New System.Collections.Generic.List(Of String)
     Dim rutasVistas As New System.Collections.Generic.List(Of String)
@@ -371,6 +397,9 @@ Sub ProcesarEnsamblajePlegado( _
             Dim p As PartDocument = TryCast(refDoc, PartDocument)
             If p Is Nothing Then Continue For
             If p.FullFileName = "" Then Continue For
+
+            ' v8.1: EXCLUIR SOLIDOS. Solo las piezas de chapa
+            ' (SheetMetalComponentDefinition) generan plano.
             If Not EsPiezaChapa(p) Then Continue For
 
             Dim clave As String = p.FullFileName.ToUpperInvariant()
@@ -409,7 +438,7 @@ Sub ProcesarEnsamblajePlegado( _
             "SÍ  = Generar los planos de TODAS las piezas" & vbCrLf & _
             "NO  = Elegir UNA sola pieza de la lista" & vbCrLf & _
             "CANCELAR = Salir sin hacer nada" & vbCrLf & vbCrLf & _
-            "Los planos se guardarán en:" & vbCrLf & carpetaEnsamblaje, _
+            "Los planos (IDW + DWF, sin PDF) se guardarán en:" & vbCrLf & carpetaSalidaPlanos, _
             "Planos de plegado del ensamblaje", _
             System.Windows.Forms.MessageBoxButtons.YesNoCancel, _
             System.Windows.Forms.MessageBoxIcon.Question)
@@ -446,8 +475,9 @@ Sub ProcesarEnsamblajePlegado( _
     End If
 
     '-----------------------------------------------------
-    ' 3) GENERAR LOS PLANOS EN LA CARPETA DEL ENSAMBLAJE
+    ' 3) GENERAR LOS PLANOS EN 02_PLANOS_PLEGADO
     '-----------------------------------------------------
+    ' v8.1: salida IDW + DWF (sin PDF) en la subcarpeta del ensamblaje.
     Dim generadas As New System.Collections.Generic.List(Of String)
     Dim existentes As New System.Collections.Generic.List(Of String)
     Dim fallidas As New System.Collections.Generic.List(Of String)
@@ -460,7 +490,7 @@ Sub ProcesarEnsamblajePlegado( _
         Dim codigo As String = codigos(idx)
 
         Dim rutaIDW As String = _
-            System.IO.Path.Combine(carpetaEnsamblaje, codigo & ".idw")
+            System.IO.Path.Combine(carpetaSalidaPlanos, codigo & ".idw")
 
         ' No machacar planos existentes (criterio v7.1).
         If System.IO.File.Exists(rutaIDW) Then
@@ -500,15 +530,16 @@ Sub ProcesarEnsamblajePlegado( _
                 tg, _
                 p, _
                 rutaPlantillaBase, _
-                carpetaEnsamblaje, _
+                carpetaSalidaPlanos, _
                 "", _
                 nombreSimboloDatos, _
                 nombreSimboloPosicion, _
                 escalasDisponibles, _
                 False, _
                 codPlegado, _
-                carpetaEnsamblaje, _
-                cerrarTrasGuardar)
+                carpetaSalidaPlanos, _
+                cerrarTrasGuardar, _
+                False)
 
             generadas.Add(codigo)
         Catch ex As Exception
@@ -521,7 +552,8 @@ Sub ProcesarEnsamblajePlegado( _
     '-----------------------------------------------------
     Dim resumen As String = _
         "Planos de plegado del ensamblaje terminados." & vbCrLf & _
-        "Carpeta: " & carpetaEnsamblaje & vbCrLf & vbCrLf & _
+        "Carpeta: " & carpetaSalidaPlanos & vbCrLf & _
+        "Formatos: IDW + DWF (sin PDF)" & vbCrLf & vbCrLf & _
         "GENERADOS (" & generadas.Count.ToString() & "):" & vbCrLf & _
         ResumirListaCodigos(generadas) & vbCrLf & vbCrLf & _
         "YA EXISTÍAN - NO tocados (" & existentes.Count.ToString() & "):" & vbCrLf & _
@@ -910,7 +942,8 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
                                      ByVal aumentarEscalaUnPaso As Boolean, _
                                      ByVal codigoPlegadoAsignado As String, _
                                      Optional ByVal carpetaSalidaForzada As String = "", _
-                                     Optional ByVal cerrarTrasGuardar As Boolean = False)
+                                     Optional ByVal cerrarTrasGuardar As Boolean = False, _
+                                     Optional ByVal exportarPDFTambien As Boolean = True)
 
     Dim smDef As SheetMetalComponentDefinition = TryCast(partDoc.ComponentDefinition, SheetMetalComponentDefinition)
 
@@ -1326,7 +1359,12 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     Dim rutaDWF As String = System.IO.Path.Combine(carpetaSalida, nombreBase & ".dwf")
 
     drawingDoc.SaveAs(rutaPlano, False)
-    ExportarPDF(invApp, drawingDoc, rutaPDF)
+
+    ' v8.1: en modo ensamblaje NO se genera PDF, solo DWF.
+    If exportarPDFTambien Then
+        ExportarPDF(invApp, drawingDoc, rutaPDF)
+    End If
+
     ExportarDWF(invApp, drawingDoc, rutaDWF)
 
     ' v8.0: en modo lote se cierra el plano; en modo individual queda abierto.
