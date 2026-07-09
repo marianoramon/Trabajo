@@ -1,7 +1,17 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.1 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.2 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.2:
+    '  - CODIGO DE PLEGADO AUTOMATICO: la regla toma el primer codigo
+    '    DISPONIBLE del CSV CONTROL_CODIGOS_PLEGADO, lo marca como
+    '    UTILIZADO (articulo, ruta IPT, fecha, usuario) y guarda el CSV.
+    '  - Si el articulo ya tiene codigo (iProperty o fila del CSV),
+    '    se reutiliza en lugar de gastar uno nuevo.
+    '  - Lectura/escritura del CSV con 5 reintentos (evita el error
+    '    "being used by another process" si esta abierto en Excel).
+    '  - Ya no hace falta teclear el codigo a mano en planos nuevos.
     '
     ' Novedades v8.1:
     '  - Los planos del ensamblaje se guardan en la subcarpeta
@@ -45,6 +55,13 @@ Sub Main()
 
     Dim NOMBRE_REGLA_IPROPERTIES As String = "IPROPERTIES"
 
+    ' v8.2: CSV de control de codigos de plegado.
+    ' Formato: COD_PLEGADO;ESTADO;COD_ARTICULO;RUTA_IPT;FECHA;USUARIO
+    ' La regla toma automaticamente el primer codigo DISPONIBLE,
+    ' lo marca como UTILIZADO y guarda el CSV.
+    Dim RUTA_CSV_CONTROL_PLEGADO As String = _
+        "Q:\MARIANO\00_CONTROL_PLEGADO\CONTROL_CODIGOS_PLEGADO.csv"
+
     Dim ESCALAS() As Double = { _
         1.0, _
         0.5, _
@@ -82,6 +99,7 @@ Sub Main()
             NOMBRE_SIMBOLO_DATOS, _
             NOMBRE_SIMBOLO_POSICION, _
             NOMBRE_REGLA_IPROPERTIES, _
+            RUTA_CSV_CONTROL_PLEGADO, _
             ESCALAS)
 
         Exit Sub
@@ -235,18 +253,22 @@ Sub Main()
     End Try
 
     '---------------------------------------------------------
-    ' ASIGNAR / VALIDAR CODIGO DE PLEGADO EN LA PIEZA ORIGEN
+    ' v8.2: ASIGNAR CODIGO DE PLEGADO AUTOMATICO DESDE EL CSV
     '---------------------------------------------------------
+    ' Orden: iProperty existente > codigo ya asignado a este articulo
+    ' en el CSV > primer codigo DISPONIBLE del CSV (se marca UTILIZADO
+    ' y se guarda el CSV) > regla IPROPERTIES como ultimo recurso.
     Dim codigoPlegadoAsignado As String = ""
 
     Try
-        codigoPlegadoAsignado = EjecutarIPropertiesModoCodigoPlegado( _
+        codigoPlegadoAsignado = AsignarCodigoPlegadoAutomatico( _
             invApp, _
             piezaOrigen, _
+            RUTA_CSV_CONTROL_PLEGADO, _
             NOMBRE_REGLA_IPROPERTIES)
     Catch ex As Exception
         MessageBox.Show( _
-            "No se ha podido asignar o validar el COD DE PLEGADO." & _
+            "No se ha podido asignar el COD DE PLEGADO automatico." & _
             vbCrLf & vbCrLf & ex.Message, _
             "Código de plegado")
         Exit Sub
@@ -254,7 +276,9 @@ Sub Main()
 
     If Trim(codigoPlegadoAsignado) = "" Then
         MessageBox.Show( _
-            "La regla IPROPERTIES ha terminado sin devolver un COD DE PLEGADO válido.", _
+            "No se ha podido obtener un COD DE PLEGADO." & vbCrLf & vbCrLf & _
+            "Revisa que el CSV de control tenga códigos DISPONIBLES:" & vbCrLf & _
+            RUTA_CSV_CONTROL_PLEGADO, _
             "Código de plegado")
         Exit Sub
     End If
@@ -354,6 +378,7 @@ Sub ProcesarEnsamblajePlegado( _
     ByVal nombreSimboloDatos As String, _
     ByVal nombreSimboloPosicion As String, _
     ByVal nombreReglaIProperties As String, _
+    ByVal rutaCSVControlPlegado As String, _
     ByVal escalasDisponibles() As Double)
 
     If asmDoc.FullFileName = "" Then
@@ -498,19 +523,18 @@ Sub ProcesarEnsamblajePlegado( _
             Continue For
         End If
 
-        ' COD DE PLEGADO: primero el ya asignado en la pieza,
-        ' despues la regla IPROPERTIES, por ultimo entrada manual.
-        Dim codPlegado As String = _
-            Trim(LeerPropiedadUsuario(p, "COD DE PLEGADO"))
+        ' v8.2: COD DE PLEGADO AUTOMATICO. Orden: iProperty existente >
+        ' codigo ya asignado al articulo en el CSV > primer DISPONIBLE
+        ' del CSV (se marca UTILIZADO y se guarda) > regla IPROPERTIES.
+        ' Solo si todo falla se pide a mano.
+        Dim codPlegado As String = ""
 
-        If codPlegado = "" Then
-            Try
-                codPlegado = EjecutarIPropertiesModoCodigoPlegado( _
-                    invApp, p, nombreReglaIProperties)
-            Catch
-                codPlegado = ""
-            End Try
-        End If
+        Try
+            codPlegado = AsignarCodigoPlegadoAutomatico( _
+                invApp, p, rutaCSVControlPlegado, nombreReglaIProperties)
+        Catch
+            codPlegado = ""
+        End Try
 
         If codPlegado = "" Then
             codPlegado = Trim(InputBox( _
@@ -580,6 +604,243 @@ Function ResumirListaCodigos( _
     Return salida
 
 End Function
+
+
+'---------------------------------------------------------
+' v8.2: CODIGO DE PLEGADO AUTOMATICO DESDE CSV DE CONTROL
+'---------------------------------------------------------
+' CSV: COD_PLEGADO;ESTADO;COD_ARTICULO;RUTA_IPT;FECHA;USUARIO
+'
+' Orden de asignacion:
+'   1. iProperty COD DE PLEGADO ya presente en la pieza
+'      (se sincroniza el CSV si esa fila seguia DISPONIBLE).
+'   2. Codigo ya asignado a este articulo en el CSV (se reutiliza).
+'   3. Primer codigo DISPONIBLE del CSV: se marca UTILIZADO con
+'      articulo, ruta, fecha y usuario, y se guarda el CSV.
+'   4. Regla externa IPROPERTIES como ultimo recurso.
+'
+' El CSV se lee/escribe con reintentos por si Excel lo tiene abierto.
+
+Function AsignarCodigoPlegadoAutomatico( _
+    ByVal invApp As Inventor.Application, _
+    ByVal partDoc As PartDocument, _
+    ByVal rutaCSV As String, _
+    ByVal nombreReglaIProperties As String) As String
+
+    If partDoc Is Nothing Then Return ""
+
+    Dim codArticulo As String = _
+        LeerPropiedad(partDoc, "Design Tracking Properties", "Part Number")
+
+    If codArticulo = "" Then
+        codArticulo = System.IO.Path.GetFileNameWithoutExtension(partDoc.FullFileName)
+    End If
+
+    codArticulo = NormalizarCodigoParaRango(codArticulo)
+
+    Dim rutaIPT As String = partDoc.FullFileName
+
+    ' 1) iProperty ya presente en la pieza.
+    Dim codigoExistente As String = _
+        Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO"))
+
+    If codigoExistente <> "" Then
+        ' Sincronizar el CSV por si esa fila seguia como DISPONIBLE.
+        Try
+            MarcarCodigoUtilizadoEnCSV(rutaCSV, codigoExistente, codArticulo, rutaIPT)
+        Catch
+        End Try
+        Return codigoExistente
+    End If
+
+    ' 2) y 3) Buscar en el CSV: reutilizar el del articulo o tomar
+    ' el primer DISPONIBLE.
+    Dim codigoCSV As String = ""
+
+    Try
+        codigoCSV = TomarCodigoPlegadoDeCSV(rutaCSV, codArticulo, rutaIPT)
+    Catch
+        codigoCSV = ""
+    End Try
+
+    If codigoCSV <> "" Then
+        ' Guardar el codigo en la pieza.
+        EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoCSV)
+        Try
+            If partDoc.FullFileName <> "" Then partDoc.Save()
+        Catch
+        End Try
+        Return codigoCSV
+    End If
+
+    ' 4) Ultimo recurso: la regla externa IPROPERTIES.
+    Try
+        Return EjecutarIPropertiesModoCodigoPlegado( _
+            invApp, partDoc, nombreReglaIProperties)
+    Catch
+        Return ""
+    End Try
+
+End Function
+
+
+' Devuelve el codigo asignado a este articulo si ya existe en el CSV,
+' o toma el primer DISPONIBLE, lo marca UTILIZADO y guarda el CSV.
+Function TomarCodigoPlegadoDeCSV( _
+    ByVal rutaCSV As String, _
+    ByVal codArticulo As String, _
+    ByVal rutaIPT As String) As String
+
+    If Trim(rutaCSV) = "" Then Return ""
+    If Not System.IO.File.Exists(rutaCSV) Then
+        Throw New Exception("No existe el CSV de control: " & rutaCSV)
+    End If
+
+    Dim lineas() As String = LeerLineasCSVConReintentos(rutaCSV)
+    If lineas Is Nothing OrElse lineas.Length < 2 Then Return ""
+
+    Dim indiceDisponible As Integer = -1
+
+    ' Primera pasada: ¿este articulo ya tiene codigo asignado?
+    For i As Integer = 1 To lineas.Length - 1
+        Dim campos() As String = lineas(i).Split(";"c)
+        If campos.Length < 3 Then Continue For
+
+        Dim estado As String = Trim(campos(1)).ToUpperInvariant()
+        Dim articuloFila As String = Trim(campos(2)).ToUpperInvariant()
+
+        If estado = "UTILIZADO" AndAlso _
+           articuloFila <> "" AndAlso _
+           articuloFila = codArticulo.ToUpperInvariant() Then
+            Return Trim(campos(0))
+        End If
+
+        If indiceDisponible < 0 AndAlso estado = "DISPONIBLE" Then
+            indiceDisponible = i
+        End If
+    Next
+
+    ' Segunda pasada: consumir el primer DISPONIBLE.
+    If indiceDisponible < 0 Then
+        Throw New Exception( _
+            "El CSV de control no tiene codigos DISPONIBLES." & vbCrLf & rutaCSV)
+    End If
+
+    Dim camposFila() As String = lineas(indiceDisponible).Split(";"c)
+    Dim codigoAsignado As String = Trim(camposFila(0))
+
+    lineas(indiceDisponible) = _
+        codigoAsignado & ";UTILIZADO;" & _
+        codArticulo & ";" & _
+        rutaIPT & ";" & _
+        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & ";" & _
+        ObtenerUsuarioWindowsActual()
+
+    EscribirLineasCSVConReintentos(rutaCSV, lineas)
+
+    Return codigoAsignado
+
+End Function
+
+
+' Marca como UTILIZADO un codigo concreto (sincronizacion cuando la
+' pieza ya traia el codigo en sus iProperties).
+Sub MarcarCodigoUtilizadoEnCSV( _
+    ByVal rutaCSV As String, _
+    ByVal codigo As String, _
+    ByVal codArticulo As String, _
+    ByVal rutaIPT As String)
+
+    If Trim(rutaCSV) = "" Then Exit Sub
+    If Trim(codigo) = "" Then Exit Sub
+    If Not System.IO.File.Exists(rutaCSV) Then Exit Sub
+
+    Dim lineas() As String = LeerLineasCSVConReintentos(rutaCSV)
+    If lineas Is Nothing OrElse lineas.Length < 2 Then Exit Sub
+
+    Dim cambiado As Boolean = False
+
+    For i As Integer = 1 To lineas.Length - 1
+        Dim campos() As String = lineas(i).Split(";"c)
+        If campos.Length < 2 Then Continue For
+
+        If Trim(campos(0)) = Trim(codigo) Then
+
+            Dim estado As String = Trim(campos(1)).ToUpperInvariant()
+
+            ' Solo se escribe si la fila seguia DISPONIBLE o sin articulo.
+            Dim articuloFila As String = ""
+            If campos.Length >= 3 Then articuloFila = Trim(campos(2))
+
+            If estado <> "UTILIZADO" OrElse articuloFila = "" Then
+                lineas(i) = _
+                    Trim(codigo) & ";UTILIZADO;" & _
+                    codArticulo & ";" & _
+                    rutaIPT & ";" & _
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & ";" & _
+                    ObtenerUsuarioWindowsActual()
+                cambiado = True
+            End If
+
+            Exit For
+        End If
+    Next
+
+    If cambiado Then
+        EscribirLineasCSVConReintentos(rutaCSV, lineas)
+    End If
+
+End Sub
+
+
+' Lectura con reintentos: evita el error "being used by another process"
+' cuando el CSV esta abierto en Excel u otra sesion lo esta escribiendo.
+Function LeerLineasCSVConReintentos(ByVal rutaCSV As String) As String()
+
+    Dim ultimoError As String = ""
+
+    For intento As Integer = 1 To 5
+        Try
+            Return System.IO.File.ReadAllLines( _
+                rutaCSV, System.Text.Encoding.Default)
+        Catch ex As Exception
+            ultimoError = ex.Message
+            System.Threading.Thread.Sleep(500)
+        End Try
+    Next
+
+    Throw New Exception( _
+        "No se ha podido LEER el CSV de control tras 5 intentos." & vbCrLf & _
+        "Cierra el archivo en Excel y vuelve a ejecutar la regla." & vbCrLf & _
+        rutaCSV & vbCrLf & vbCrLf & ultimoError)
+
+End Function
+
+
+Sub EscribirLineasCSVConReintentos( _
+    ByVal rutaCSV As String, _
+    ByVal lineas() As String)
+
+    Dim ultimoError As String = ""
+
+    For intento As Integer = 1 To 5
+        Try
+            System.IO.File.WriteAllLines( _
+                rutaCSV, lineas, System.Text.Encoding.Default)
+            Exit Sub
+        Catch ex As Exception
+            ultimoError = ex.Message
+            System.Threading.Thread.Sleep(500)
+        End Try
+    Next
+
+    Throw New Exception( _
+        "No se ha podido GUARDAR el CSV de control tras 5 intentos." & vbCrLf & _
+        "El codigo se ha asignado a la pieza pero el CSV NO se ha actualizado." & vbCrLf & _
+        "Cierra el archivo en Excel y actualiza la fila a mano, o vuelve a ejecutar." & vbCrLf & _
+        rutaCSV & vbCrLf & vbCrLf & ultimoError)
+
+End Sub
 
 
 '---------------------------------------------------------
