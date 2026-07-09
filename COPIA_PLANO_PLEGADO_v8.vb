@@ -81,7 +81,7 @@ Sub Main()
     ' NUNCA deben asignarse a piezas nuevas, aunque el CSV de control
     ' los siga mostrando como DISPONIBLE.
     Dim RUTA_CSV_DUPLICADOS_PLEGADO As String = _
-        "Q:\MARIANO\00_CONTROL_PLEGADO\DUPLICADOS_PL.csv"
+        "Q:\MARIANO\00_CONTROL_PLEGADO\AUDITORIA\DUPLICADOS_PL.csv"
 
     Dim ESCALAS() As Double = { _
         1.0, _
@@ -885,7 +885,26 @@ Sub CargarDuplicadosNoDisponibles( _
 
     Try
         If Trim(rutaCSVDuplicados) = "" Then Exit Sub
-        If Not System.IO.File.Exists(rutaCSVDuplicados) Then Exit Sub
+
+        ' Busqueda de respaldo: si no esta en la ruta configurada, se
+        ' prueba en la carpeta padre y en la subcarpeta AUDITORIA.
+        If Not System.IO.File.Exists(rutaCSVDuplicados) Then
+            Dim nombre As String = System.IO.Path.GetFileName(rutaCSVDuplicados)
+            Dim carpeta As String = System.IO.Path.GetDirectoryName(rutaCSVDuplicados)
+
+            Dim candidatoPadre As String = System.IO.Path.Combine( _
+                System.IO.Path.GetDirectoryName(carpeta), nombre)
+            Dim candidatoAuditoria As String = System.IO.Path.Combine( _
+                System.IO.Path.Combine(carpeta, "AUDITORIA"), nombre)
+
+            If System.IO.File.Exists(candidatoPadre) Then
+                rutaCSVDuplicados = candidatoPadre
+            ElseIf System.IO.File.Exists(candidatoAuditoria) Then
+                rutaCSVDuplicados = candidatoAuditoria
+            Else
+                Exit Sub
+            End If
+        End If
 
         Dim lineas() As String = LeerLineasCSVConReintentos(rutaCSVDuplicados)
         If lineas Is Nothing OrElse lineas.Length < 2 Then Exit Sub
