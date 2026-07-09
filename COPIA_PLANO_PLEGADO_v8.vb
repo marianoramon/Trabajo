@@ -1,7 +1,15 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.5 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.6 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.6:
+    '  - Busqueda con comodin del CSV de duplicados: si no esta en la
+    '    ruta configurada, se busca DUPLICADOS*.csv en esa carpeta, en
+    '    su carpeta padre y en la subcarpeta AUDITORIA.
+    '  - Si el CSV de control ya esta sincronizado (codigos 1119-1166
+    '    marcados UTILIZADO), se puede dejar RUTA_CSV_DUPLICADOS_PLEGADO
+    '    vacia y la regla funciona solo con el CSV de control.
     '
     ' Novedades v8.5:
     '  - La carpeta de destino de la pieza se elige SOLO entre carpetas
@@ -962,7 +970,34 @@ Function CargarDuplicadosNoDisponibles( _
             ElseIf System.IO.File.Exists(candidatoAuditoria) Then
                 rutaCSVDuplicados = candidatoAuditoria
             Else
-                Return False
+                ' v8.6: busqueda final con comodin DUPLICADOS*.csv en la
+                ' carpeta configurada, su padre y la subcarpeta AUDITORIA.
+                Dim encontrado As String = ""
+                Dim carpetasBusqueda() As String = { _
+                    carpeta, _
+                    System.IO.Path.GetDirectoryName(carpeta), _
+                    System.IO.Path.Combine(carpeta, "AUDITORIA")}
+
+                For Each dirBusqueda As String In carpetasBusqueda
+                    Try
+                        If dirBusqueda <> "" AndAlso _
+                           System.IO.Directory.Exists(dirBusqueda) Then
+
+                            Dim coincidencias() As String = _
+                                System.IO.Directory.GetFiles( _
+                                    dirBusqueda, "DUPLICADOS*.csv")
+
+                            If coincidencias.Length > 0 Then
+                                encontrado = coincidencias(0)
+                                Exit For
+                            End If
+                        End If
+                    Catch
+                    End Try
+                Next
+
+                If encontrado = "" Then Return False
+                rutaCSVDuplicados = encontrado
             End If
         End If
 
