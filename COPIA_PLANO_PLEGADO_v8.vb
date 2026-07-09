@@ -1,7 +1,14 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.4 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.5 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.5:
+    '  - La carpeta de destino de la pieza se elige SOLO entre carpetas
+    '    con formato estricto de rango (.A02000-A02999, .40000-40999).
+    '    Antes carpetas como "bh 1618 sueltas-40405" podian colarse.
+    '  - Si no existe la carpeta del rango, se crea automaticamente:
+    '    A03000 -> .A03000-A03999
     '
     ' Novedades v8.4:
     '  - Si el CSV de duplicados no se puede leer, la regla SE DETIENE
@@ -1217,6 +1224,13 @@ End Function
 ' COPIA Y APERTURA DE LA PIEZA
 '---------------------------------------------------------
 
+' v8.5: SOLO acepta carpetas con formato estricto de rango:
+'   .A02000-A02999 / A02000-A02999   (codigos con prefijo A)
+'   .40000-40999   / 40000-40999     (codigos numericos)
+' Antes cualquier carpeta con dos numeros y una letra A en el nombre
+' (ej: "bh 1618 sueltas-40405") podia colarse como carpeta de rango.
+' Si no existe la carpeta del rango, SE CREA (bloques de 1000,
+' con punto inicial como las existentes: .A03000-A03999).
 Function BuscarCarpetaPiezaPorCodigo( _
     ByVal raiz As String, _
     ByVal codigo As String) As String
@@ -1230,20 +1244,30 @@ Function BuscarCarpetaPiezaPorCodigo( _
         Dim mejor As String = ""
         Dim mejorAmplitud As Integer = Integer.MaxValue
 
+        Dim patron As String
+        If esA Then
+            patron = "^\.?A0*(\d+)\s*-\s*A0*(\d+)$"
+        Else
+            patron = "^\.?0*(\d+)\s*-\s*0*(\d+)$"
+        End If
+
         For Each carpeta As String In System.IO.Directory.GetDirectories(raiz)
 
             Dim nombre As String = _
-                System.IO.Path.GetFileName(carpeta).ToUpperInvariant()
+                System.IO.Path.GetFileName(carpeta).Trim().ToUpperInvariant()
 
-            If esA AndAlso Not nombre.Contains("A") Then Continue For
-            If Not esA AndAlso nombre.Contains("A") Then Continue For
+            Dim m As System.Text.RegularExpressions.Match = _
+                System.Text.RegularExpressions.Regex.Match(nombre, patron)
 
-            Dim limites() As Integer = ExtraerLimitesCarpetaIntegrada(nombre)
+            If Not m.Success Then Continue For
 
-            If limites Is Nothing OrElse limites.Length < 2 Then Continue For
+            Dim inicio As Integer = 0
+            Dim fin As Integer = 0
+            If Not Integer.TryParse(m.Groups(1).Value, inicio) Then Continue For
+            If Not Integer.TryParse(m.Groups(2).Value, fin) Then Continue For
 
-            If numero >= limites(0) AndAlso numero <= limites(1) Then
-                Dim amplitud As Integer = Math.Abs(limites(1) - limites(0))
+            If numero >= inicio AndAlso numero <= fin Then
+                Dim amplitud As Integer = Math.Abs(fin - inicio)
 
                 If amplitud < mejorAmplitud Then
                     mejorAmplitud = amplitud
@@ -1253,7 +1277,29 @@ Function BuscarCarpetaPiezaPorCodigo( _
 
         Next
 
-        Return mejor
+        If mejor <> "" Then Return mejor
+
+        ' No existe carpeta de rango para este codigo: se crea.
+        ' A03000 -> .A03000-A03999 ; 43500 -> .43000-43999
+        Dim inicioRango As Integer = (numero \ 1000) * 1000
+        Dim finRango As Integer = inicioRango + 999
+
+        Dim nombreNuevo As String
+        If esA Then
+            nombreNuevo = ".A" & inicioRango.ToString("00000") & _
+                          "-A" & finRango.ToString("00000")
+        Else
+            nombreNuevo = "." & inicioRango.ToString("00000") & _
+                          "-" & finRango.ToString("00000")
+        End If
+
+        Dim rutaNueva As String = System.IO.Path.Combine(raiz, nombreNuevo)
+
+        If Not System.IO.Directory.Exists(rutaNueva) Then
+            System.IO.Directory.CreateDirectory(rutaNueva)
+        End If
+
+        Return rutaNueva
 
     Catch
         Return ""
