@@ -1,7 +1,17 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.3 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.4 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.4:
+    '  - Si el CSV de duplicados no se puede leer, la regla SE DETIENE
+    '    con aviso en lugar de asignar codigos ya gastados en silencio.
+    '  - El COD DE PLEGADO ya grabado en una pieza se valida contra
+    '    DUPLICADOS_PL: si pertenece a otro articulo (ej: 1119 es de
+    '    A02777), se ignora y se asigna un codigo nuevo.
+    '  - Autocorreccion del CSV de control: las filas UTILIZADO con un
+    '    articulo distinto al dueno real segun DUPLICADOS_PL se
+    '    restauran automaticamente (marca SYNC DUPLICADOS).
     '
     ' Novedades v8.3:
     '  - Los codigos NO se asignan de forma consecutiva a ciegas:
@@ -695,39 +705,57 @@ Function AsignarCodigoPlegadoAutomatico( _
     Dim rutaIPT As String = partDoc.FullFileName
 
     ' 1) iProperty ya presente en la pieza.
+    ' v8.4: el codigo existente se VALIDA contra DUPLICADOS_PL antes de
+    ' reutilizarlo. Si ese codigo pertenece a OTRO articulo (ej: una
+    ' prueba anterior grabo el 1119 que es de A02777), NO se reutiliza:
+    ' se sigue al paso 2/3 para tomar un codigo nuevo del CSV.
     Dim codigoExistente As String = _
         Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO"))
 
     If codigoExistente <> "" Then
-        ' Sincronizar el CSV por si esa fila seguia como DISPONIBLE.
-        Try
-            MarcarCodigoUtilizadoEnCSV(rutaCSV, codigoExistente, codArticulo, rutaIPT)
-        Catch
-        End Try
 
-        ' v8.3: asegurar que la propiedad queda GUARDADA en el archivo.
-        ' Si solo estaba en memoria, la copia a produccion salia sin ella.
-        Try
-            EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoExistente)
-            If partDoc.FullFileName <> "" AndAlso partDoc.Dirty Then
-                partDoc.Save()
+        Dim dupNoDisp As New System.Collections.Generic.Dictionary(Of String, String)
+        Dim dupPorArt As New System.Collections.Generic.Dictionary(Of String, String)
+        Dim duplicadosCargados As Boolean = _
+            CargarDuplicadosNoDisponibles(rutaCSVDuplicados, dupNoDisp, dupPorArt)
+
+        Dim codigoEnConflicto As Boolean = False
+
+        If duplicadosCargados AndAlso dupNoDisp.ContainsKey(codigoExistente) Then
+            Dim duenoDuplicado As String = dupNoDisp(codigoExistente)
+            If duenoDuplicado <> "" AndAlso _
+               duenoDuplicado <> codArticulo.ToUpperInvariant() Then
+                codigoEnConflicto = True
             End If
-        Catch
-        End Try
+        End If
 
-        Return codigoExistente
+        If Not codigoEnConflicto Then
+            ' Sincronizar el CSV por si esa fila seguia como DISPONIBLE.
+            Try
+                MarcarCodigoUtilizadoEnCSV(rutaCSV, codigoExistente, codArticulo, rutaIPT)
+            Catch
+            End Try
+
+            ' Asegurar que la propiedad queda GUARDADA en el archivo.
+            Try
+                EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoExistente)
+                If partDoc.FullFileName <> "" AndAlso partDoc.Dirty Then
+                    partDoc.Save()
+                End If
+            Catch
+            End Try
+
+            Return codigoExistente
+        End If
+        ' Con conflicto: se ignora el codigo grabado y se pide uno nuevo.
     End If
 
     ' 2) y 3) Buscar en el CSV: reutilizar el del articulo (control o
     ' duplicados) o tomar el primer DISPONIBLE realmente libre.
-    Dim codigoCSV As String = ""
-
-    Try
-        codigoCSV = TomarCodigoPlegadoDeCSV( _
-            rutaCSV, rutaCSVDuplicados, codArticulo, rutaIPT)
-    Catch
-        codigoCSV = ""
-    End Try
+    ' v8.4: los errores del CSV ya NO se tragan en silencio; suben al
+    ' llamador para que el usuario vea el motivo real.
+    Dim codigoCSV As String = TomarCodigoPlegadoDeCSV( _
+        rutaCSV, rutaCSVDuplicados, codArticulo, rutaIPT)
 
     If codigoCSV <> "" Then
         ' Guardar el codigo en la pieza.
@@ -767,11 +795,25 @@ Function TomarCodigoPlegadoDeCSV( _
     End If
 
     ' Codigos ya gastados segun DUPLICADOS_PL (COD_NUEVO;NO DISPONIBLE).
+    ' v8.4: si el CSV de duplicados esta configurado pero NO se puede
+    ' cargar, la regla se DETIENE. Continuar en silencio provocaba que
+    ' se asignaran codigos ya gastados (ej: 1119 de A02777).
     Dim codigosNoDisponibles As New System.Collections.Generic.Dictionary(Of String, String)
     Dim codigoPorArticuloDup As New System.Collections.Generic.Dictionary(Of String, String)
 
-    CargarDuplicadosNoDisponibles( _
-        rutaCSVDuplicados, codigosNoDisponibles, codigoPorArticuloDup)
+    If Trim(rutaCSVDuplicados) <> "" Then
+        If Not CargarDuplicadosNoDisponibles( _
+            rutaCSVDuplicados, codigosNoDisponibles, codigoPorArticuloDup) Then
+
+            Throw New Exception( _
+                "No se ha podido leer el CSV de duplicados:" & vbCrLf & _
+                rutaCSVDuplicados & vbCrLf & vbCrLf & _
+                "Sin ese archivo no se puede comprobar que codigos ya estan " & _
+                "gastados (1112-1166) y NO se asigna ningun codigo nuevo." & vbCrLf & _
+                "Revisa la ruta o deja la constante RUTA_CSV_DUPLICADOS_PLEGADO " & _
+                "vacia si ya no quieres usar ese control.")
+        End If
+    End If
 
     Dim articuloClave As String = codArticulo.ToUpperInvariant()
 
@@ -797,12 +839,22 @@ Function TomarCodigoPlegadoDeCSV( _
         Dim articuloFila As String = Trim(campos(2)).ToUpperInvariant()
 
         ' a) El articulo ya tiene codigo en el CSV de control.
+        ' v8.4: solo se reutiliza si DUPLICADOS_PL no dice que ese codigo
+        ' pertenece a OTRO articulo (fila contaminada por una prueba).
         If codigoAsignado = "" AndAlso _
            estado = "UTILIZADO" AndAlso _
            articuloFila <> "" AndAlso _
            articuloFila = articuloClave Then
-            codigoAsignado = codigoFila
+
+            If Not (codigosNoDisponibles.ContainsKey(codigoFila) AndAlso _
+                    codigosNoDisponibles(codigoFila) <> articuloClave) Then
+                codigoAsignado = codigoFila
+            End If
         End If
+
+        ' NOTA v8.4: las filas UTILIZADO cuyo articulo difiere del dueno
+        ' segun DUPLICADOS_PL (ej: 1112-1118) NO se tocan: son dobles
+        ' reservas historicas que debe resolver el usuario a mano.
 
         ' b) El articulo tiene codigo reservado por DUPLICADOS_PL:
         '    se reutiliza y se sincroniza su fila si seguia DISPONIBLE.
@@ -874,17 +926,18 @@ Function TomarCodigoPlegadoDeCSV( _
 End Function
 
 
-' v8.3: Lee DUPLICADOS_PL.csv y devuelve:
+' v8.4: Lee DUPLICADOS_PL.csv y devuelve:
 '   codigosNoDisponibles: COD_NUEVO -> ARTICULO (filas NO DISPONIBLE)
 '   codigoPorArticulo:    ARTICULO  -> COD_NUEVO (para reutilizar)
-' Tolerante: si el archivo no existe o falla, deja los diccionarios vacios.
-Sub CargarDuplicadosNoDisponibles( _
+' Devuelve True si el archivo se cargo correctamente; False si no se
+' encuentra o no se puede leer (el llamador decide si es error fatal).
+Function CargarDuplicadosNoDisponibles( _
     ByVal rutaCSVDuplicados As String, _
     ByRef codigosNoDisponibles As System.Collections.Generic.Dictionary(Of String, String), _
-    ByRef codigoPorArticulo As System.Collections.Generic.Dictionary(Of String, String))
+    ByRef codigoPorArticulo As System.Collections.Generic.Dictionary(Of String, String)) As Boolean
 
     Try
-        If Trim(rutaCSVDuplicados) = "" Then Exit Sub
+        If Trim(rutaCSVDuplicados) = "" Then Return False
 
         ' Busqueda de respaldo: si no esta en la ruta configurada, se
         ' prueba en la carpeta padre y en la subcarpeta AUDITORIA.
@@ -902,12 +955,12 @@ Sub CargarDuplicadosNoDisponibles( _
             ElseIf System.IO.File.Exists(candidatoAuditoria) Then
                 rutaCSVDuplicados = candidatoAuditoria
             Else
-                Exit Sub
+                Return False
             End If
         End If
 
         Dim lineas() As String = LeerLineasCSVConReintentos(rutaCSVDuplicados)
-        If lineas Is Nothing OrElse lineas.Length < 2 Then Exit Sub
+        If lineas Is Nothing OrElse lineas.Length < 2 Then Return True
 
         ' Formato: COD_PL;ARTICULO;RESOLUCION;COD_ANTERIOR;COD_NUEVO;ESTADO
         For i As Integer = 1 To lineas.Length - 1
@@ -936,12 +989,15 @@ Sub CargarDuplicadosNoDisponibles( _
             End Try
         Next
 
+        Return True
+
     Catch
-        ' Si DUPLICADOS_PL no se puede leer, se continua solo con el
-        ' CSV de control (comportamiento v8.2).
+        ' v8.4: el fallo de lectura se comunica al llamador, que decide
+        ' si es un error fatal (asignacion de codigo nuevo) o tolerable.
+        Return False
     End Try
 
-End Sub
+End Function
 
 
 ' Marca como UTILIZADO un codigo concreto (sincronizacion cuando la
@@ -1764,7 +1820,7 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     EscribirPropiedadUsuario(drawingDoc, "MATRIZ", matriz)
     EscribirPropiedadUsuario(drawingDoc, "COD DE PLEGADO", codPlegadoReal)
     EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
-    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.3-ENSAMBLAJE")
+    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.4-ENSAMBLAJE")
     EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
     EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
     EscribirPropiedadUsuario(drawingDoc, "ESTADO_DISENO", estadoDiseno)
