@@ -1,7 +1,19 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.7 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.8 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.8 (LISTADO MAESTRO HISTORICO):
+    '  - Nueva fuente PRIORITARIA: LISTADO_PL.csv (ARTICULO;COD_PL) con
+    '    todo el historico de codigos (259-1168). Si el articulo ya
+    '    figura ahi, se reutiliza SIEMPRE su codigo historico:
+    '    A02146 -> 940, y jamas se le asigna uno nuevo.
+    '  - TODOS los codigos del listado quedan bloqueados para piezas
+    '    nuevas (el 1167 era de A02910 y se estaba reasignando mal).
+    '  - El codigo grabado en la iProperty tambien se valida contra el
+    '    listado: si pertenece a otro articulo, se ignora.
+    '  - Si el listado esta configurado pero no se puede leer, la regla
+    '    SE DETIENE (evita duplicar codigos historicos a ciegas).
     '
     ' Novedades v8.7 (CORRECCION DEFINITIVA IPROPERTIES EN LA COPIA):
     '  - El COD DE PLEGADO se asigna y GUARDA en la pieza origen ANTES
@@ -119,6 +131,15 @@ Sub Main()
     Dim RUTA_CSV_DUPLICADOS_PLEGADO As String = _
         "Q:\MARIANO\00_CONTROL_PLEGADO\AUDITORIA\DUPLICADOS_PL.csv"
 
+    ' v8.8: LISTADO MAESTRO HISTORICO articulo -> codigo de plegado.
+    ' Formato: ARTICULO;COD_PL
+    ' Es la fuente PRIORITARIA: si el articulo ya figura aqui, se
+    ' reutiliza SIEMPRE su codigo historico (ej: A02146 -> 940) y
+    ' jamas se le asigna uno nuevo. Ademas, TODOS los codigos que
+    ' aparecen en el listado quedan bloqueados para piezas nuevas.
+    Dim RUTA_CSV_LISTADO_PL As String = _
+        "Q:\MARIANO\00_CONTROL_PLEGADO\AUDITORIA\LISTADO_PL.csv"
+
     Dim ESCALAS() As Double = { _
         1.0, _
         0.5, _
@@ -158,6 +179,7 @@ Sub Main()
             NOMBRE_REGLA_IPROPERTIES, _
             RUTA_CSV_CONTROL_PLEGADO, _
             RUTA_CSV_DUPLICADOS_PLEGADO, _
+            RUTA_CSV_LISTADO_PL, _
             ESCALAS)
 
         Exit Sub
@@ -224,6 +246,7 @@ Sub Main()
             piezaOrigen, _
             RUTA_CSV_CONTROL_PLEGADO, _
             RUTA_CSV_DUPLICADOS_PLEGADO, _
+            RUTA_CSV_LISTADO_PL, _
             NOMBRE_REGLA_IPROPERTIES)
     Catch ex As Exception
         MessageBox.Show( _
@@ -465,6 +488,7 @@ Sub ProcesarEnsamblajePlegado( _
     ByVal nombreReglaIProperties As String, _
     ByVal rutaCSVControlPlegado As String, _
     ByVal rutaCSVDuplicadosPlegado As String, _
+    ByVal rutaCSVListadoPL As String, _
     ByVal escalasDisponibles() As Double)
 
     If asmDoc.FullFileName = "" Then
@@ -618,7 +642,8 @@ Sub ProcesarEnsamblajePlegado( _
         Try
             codPlegado = AsignarCodigoPlegadoAutomatico( _
                 invApp, p, rutaCSVControlPlegado, _
-                rutaCSVDuplicadosPlegado, nombreReglaIProperties)
+                rutaCSVDuplicadosPlegado, rutaCSVListadoPL, _
+                nombreReglaIProperties)
         Catch
             codPlegado = ""
         End Try
@@ -713,6 +738,7 @@ Function AsignarCodigoPlegadoAutomatico( _
     ByVal partDoc As PartDocument, _
     ByVal rutaCSV As String, _
     ByVal rutaCSVDuplicados As String, _
+    ByVal rutaCSVListado As String, _
     ByVal nombreReglaIProperties As String) As String
 
     If partDoc Is Nothing Then Return ""
@@ -727,6 +753,51 @@ Function AsignarCodigoPlegadoAutomatico( _
     codArticulo = NormalizarCodigoParaRango(codArticulo)
 
     Dim rutaIPT As String = partDoc.FullFileName
+    Dim claveArticulo As String = codArticulo.ToUpperInvariant()
+
+    '---------------------------------------------------------
+    ' 0) v8.8: LISTADO MAESTRO HISTORICO (maxima prioridad)
+    '---------------------------------------------------------
+    ' Si el articulo ya figura en LISTADO_PL (ej: A02146 -> 940),
+    ' ese es SU codigo para siempre. Se graba en la pieza y se
+    ' devuelve sin gastar ningun codigo nuevo.
+    Dim listadoCodigoPorArticulo As New System.Collections.Generic.Dictionary(Of String, String)
+    Dim listadoArticuloPorCodigo As New System.Collections.Generic.Dictionary(Of String, String)
+
+    Dim listadoCargado As Boolean = CargarListadoPL( _
+        rutaCSVListado, listadoCodigoPorArticulo, listadoArticuloPorCodigo)
+
+    If Trim(rutaCSVListado) <> "" AndAlso Not listadoCargado Then
+        Throw New Exception( _
+            "No se ha podido leer el LISTADO maestro de codigos de plegado:" & vbCrLf & _
+            rutaCSVListado & vbCrLf & vbCrLf & _
+            "Sin ese archivo no se puede saber que articulos ya tienen codigo " & _
+            "historico y NO se asigna ningun codigo para evitar duplicados." & vbCrLf & _
+            "Revisa la ruta o deja la constante RUTA_CSV_LISTADO_PL vacia " & _
+            "si ya no quieres usar ese control.")
+    End If
+
+    If listadoCodigoPorArticulo.ContainsKey(claveArticulo) Then
+
+        Dim codigoHistorico As String = listadoCodigoPorArticulo(claveArticulo)
+
+        ' Grabar el codigo historico en la pieza (y guardar).
+        Try
+            EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoHistorico)
+            If partDoc.FullFileName <> "" AndAlso partDoc.Dirty Then
+                partDoc.Save()
+            End If
+        Catch
+        End Try
+
+        ' Sincronizar el CSV de control si ese codigo tiene fila alli.
+        Try
+            MarcarCodigoUtilizadoEnCSV(rutaCSV, codigoHistorico, codArticulo, rutaIPT)
+        Catch
+        End Try
+
+        Return codigoHistorico
+    End If
 
     ' 1) iProperty ya presente en la pieza.
     ' v8.4: el codigo existente se VALIDA contra DUPLICADOS_PL antes de
@@ -749,6 +820,17 @@ Function AsignarCodigoPlegadoAutomatico( _
             Dim duenoDuplicado As String = dupNoDisp(codigoExistente)
             If duenoDuplicado <> "" AndAlso _
                duenoDuplicado <> codArticulo.ToUpperInvariant() Then
+                codigoEnConflicto = True
+            End If
+        End If
+
+        ' v8.8: validar tambien contra el LISTADO maestro. Si el codigo
+        ' grabado pertenece historicamente a OTRO articulo, no se reutiliza.
+        If Not codigoEnConflicto AndAlso _
+           listadoArticuloPorCodigo.ContainsKey(codigoExistente) Then
+
+            Dim duenoListado As String = listadoArticuloPorCodigo(codigoExistente)
+            If duenoListado <> "" AndAlso duenoListado <> claveArticulo Then
                 codigoEnConflicto = True
             End If
         End If
@@ -779,7 +861,7 @@ Function AsignarCodigoPlegadoAutomatico( _
     ' v8.4: los errores del CSV ya NO se tragan en silencio; suben al
     ' llamador para que el usuario vea el motivo real.
     Dim codigoCSV As String = TomarCodigoPlegadoDeCSV( _
-        rutaCSV, rutaCSVDuplicados, codArticulo, rutaIPT)
+        rutaCSV, rutaCSVDuplicados, rutaCSVListado, codArticulo, rutaIPT)
 
     If codigoCSV <> "" Then
         ' Guardar el codigo en la pieza.
@@ -810,6 +892,7 @@ End Function
 Function TomarCodigoPlegadoDeCSV( _
     ByVal rutaCSV As String, _
     ByVal rutaCSVDuplicados As String, _
+    ByVal rutaCSVListado As String, _
     ByVal codArticulo As String, _
     ByVal rutaIPT As String) As String
 
@@ -837,6 +920,35 @@ Function TomarCodigoPlegadoDeCSV( _
                 "Revisa la ruta o deja la constante RUTA_CSV_DUPLICADOS_PLEGADO " & _
                 "vacia si ya no quieres usar ese control.")
         End If
+    End If
+
+    ' v8.8: fusionar el LISTADO maestro historico. TODO codigo que
+    ' figure en LISTADO_PL queda bloqueado para piezas nuevas y su
+    ' articulo puede reutilizarlo.
+    If Trim(rutaCSVListado) <> "" Then
+
+        Dim listCodigoPorArt As New System.Collections.Generic.Dictionary(Of String, String)
+        Dim listArtPorCodigo As New System.Collections.Generic.Dictionary(Of String, String)
+
+        If Not CargarListadoPL(rutaCSVListado, listCodigoPorArt, listArtPorCodigo) Then
+            Throw New Exception( _
+                "No se ha podido leer el LISTADO maestro de codigos:" & vbCrLf & _
+                rutaCSVListado & vbCrLf & vbCrLf & _
+                "Sin ese archivo no se puede saber que codigos historicos ya " & _
+                "estan asignados y NO se asigna ningun codigo nuevo.")
+        End If
+
+        For Each parCodigo As System.Collections.Generic.KeyValuePair(Of String, String) In listArtPorCodigo
+            If Not codigosNoDisponibles.ContainsKey(parCodigo.Key) Then
+                codigosNoDisponibles.Add(parCodigo.Key, parCodigo.Value)
+            End If
+        Next
+
+        For Each parArticulo As System.Collections.Generic.KeyValuePair(Of String, String) In listCodigoPorArt
+            If Not codigoPorArticuloDup.ContainsKey(parArticulo.Key) Then
+                codigoPorArticuloDup.Add(parArticulo.Key, parArticulo.Value)
+            End If
+        Next
     End If
 
     Dim articuloClave As String = codArticulo.ToUpperInvariant()
@@ -1045,6 +1157,88 @@ Function CargarDuplicadosNoDisponibles( _
     Catch
         ' v8.4: el fallo de lectura se comunica al llamador, que decide
         ' si es un error fatal (asignacion de codigo nuevo) o tolerable.
+        Return False
+    End Try
+
+End Function
+
+
+' v8.8: Lee el LISTADO maestro historico LISTADO_PL.csv.
+' Formato: ARTICULO;COD_PL (con cabecera).
+'   codigoPorArticulo: ARTICULO -> COD_PL (para reutilizar su codigo)
+'   articuloPorCodigo: COD_PL -> ARTICULO (para bloquear codigos usados)
+' Un mismo codigo puede pertenecer a varios articulos (piezas espejo):
+' se guarda el primero, suficiente para bloquear el codigo.
+' Devuelve True si se cargo; False si no se encuentra o no se puede leer.
+Function CargarListadoPL( _
+    ByVal rutaCSVListado As String, _
+    ByRef codigoPorArticulo As System.Collections.Generic.Dictionary(Of String, String), _
+    ByRef articuloPorCodigo As System.Collections.Generic.Dictionary(Of String, String)) As Boolean
+
+    Try
+        If Trim(rutaCSVListado) = "" Then Return False
+
+        ' Busqueda de respaldo: carpeta configurada, padre y AUDITORIA,
+        ' con comodin LISTADO_PL*.csv.
+        If Not System.IO.File.Exists(rutaCSVListado) Then
+            Dim carpeta As String = System.IO.Path.GetDirectoryName(rutaCSVListado)
+
+            Dim encontrado As String = ""
+            Dim carpetasBusqueda() As String = { _
+                carpeta, _
+                System.IO.Path.GetDirectoryName(carpeta), _
+                System.IO.Path.Combine(carpeta, "AUDITORIA")}
+
+            For Each dirBusqueda As String In carpetasBusqueda
+                Try
+                    If dirBusqueda <> "" AndAlso _
+                       System.IO.Directory.Exists(dirBusqueda) Then
+
+                        Dim coincidencias() As String = _
+                            System.IO.Directory.GetFiles( _
+                                dirBusqueda, "LISTADO_PL*.csv")
+
+                        If coincidencias.Length > 0 Then
+                            encontrado = coincidencias(0)
+                            Exit For
+                        End If
+                    End If
+                Catch
+                End Try
+            Next
+
+            If encontrado = "" Then Return False
+            rutaCSVListado = encontrado
+        End If
+
+        Dim lineas() As String = LeerLineasCSVConReintentos(rutaCSVListado)
+        If lineas Is Nothing OrElse lineas.Length < 2 Then Return True
+
+        ' Formato: ARTICULO;COD_PL
+        For i As Integer = 1 To lineas.Length - 1
+            Try
+                Dim campos() As String = lineas(i).Split(";"c)
+                If campos.Length < 2 Then Continue For
+
+                Dim articulo As String = Trim(campos(0)).ToUpperInvariant()
+                Dim codigo As String = Trim(campos(1))
+
+                If articulo = "" OrElse codigo = "" Then Continue For
+
+                If Not codigoPorArticulo.ContainsKey(articulo) Then
+                    codigoPorArticulo.Add(articulo, codigo)
+                End If
+
+                If Not articuloPorCodigo.ContainsKey(codigo) Then
+                    articuloPorCodigo.Add(codigo, articulo)
+                End If
+            Catch
+            End Try
+        Next
+
+        Return True
+
+    Catch
         Return False
     End Try
 
@@ -1910,7 +2104,7 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     EscribirPropiedadUsuario(drawingDoc, "MATRIZ", matriz)
     EscribirPropiedadUsuario(drawingDoc, "COD DE PLEGADO", codPlegadoReal)
     EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
-    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.7-ENSAMBLAJE")
+    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.8-ENSAMBLAJE")
     EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
     EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
     EscribirPropiedadUsuario(drawingDoc, "ESTADO_DISENO", estadoDiseno)
