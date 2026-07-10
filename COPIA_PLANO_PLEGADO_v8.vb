@@ -1,7 +1,18 @@
 Sub Main()
 
     '---------------------------------------------------------
-    ' COPIA_PLANO_PLEGADO v8.6 - ENSAMBLAJE + IPROPERTIES FIABLES
+    ' COPIA_PLANO_PLEGADO v8.7 - ENSAMBLAJE + IPROPERTIES FIABLES
+    '
+    ' Novedades v8.7 (CORRECCION DEFINITIVA IPROPERTIES EN LA COPIA):
+    '  - El COD DE PLEGADO se asigna y GUARDA en la pieza origen ANTES
+    '    de copiar el archivo. La copia nace ya con la propiedad dentro.
+    '  - Antes la copia se hacia primero: si el IDW ya existia, la regla
+    '    salia sin asignar codigo y la copia quedaba SIN la propiedad.
+    '  - Verificacion doble: se relee la propiedad en el origen tras
+    '    guardar, y en la copia tras abrirla (con respaldo de escritura
+    '    directa + guardado si faltara).
+    '  - Se cierra cualquier version antigua de la copia en memoria
+    '    antes de abrir la nueva (evitaba ver la propiedad recien copiada).
     '
     ' Novedades v8.6:
     '  - Busqueda con comodin del CSV de duplicados: si no esta en la
@@ -197,114 +208,14 @@ Sub Main()
     End If
 
     '---------------------------------------------------------
-    ' COPIAR IPT A SU CARPETA DE RANGO
+    ' v8.7: PASO 1 - ASIGNAR COD DE PLEGADO AL ORIGEN *ANTES* DE COPIAR
     '---------------------------------------------------------
-
-    Dim carpetaPieza As String = _
-        BuscarCarpetaPiezaPorCodigo(RUTA_BASE_PIEZAS, codigoPieza)
-
-    If carpetaPieza = "" Then
-        MessageBox.Show( _
-            "No se ha encontrado la carpeta de rango de la pieza." & vbCrLf & vbCrLf & _
-            "Código: " & codigoPieza & vbCrLf & _
-            "Raíz: " & RUTA_BASE_PIEZAS, _
-            "Copia y plano de plegado")
-        Exit Sub
-    End If
-
-    Dim rutaPiezaDestino As String = _
-        System.IO.Path.Combine(carpetaPieza, codigoPieza & ".ipt")
-
-    If Not CopiarPiezaConConfirmacionIntegrada( _
-        invApp, _
-        piezaOrigen.FullFileName, _
-        rutaPiezaDestino) Then
-
-        Exit Sub
-    End If
-
-    Dim partDoc As PartDocument = _
-        ObtenerOAbrirPiezaIntegrada(invApp, rutaPiezaDestino)
-
-    If partDoc Is Nothing Then
-        MessageBox.Show( _
-            "La pieza se ha copiado, pero no se ha podido abrir:" & vbCrLf & vbCrLf & _
-            rutaPiezaDestino, _
-            "Copia y plano de plegado")
-        Exit Sub
-    End If
-
-    '---------------------------------------------------------
-    ' CALCULAR RUTAS FINALES
-    '---------------------------------------------------------
-
-    Dim carpetaPlano As String = _
-        ObtenerCarpetaPlanoIDWPorCodigo(RUTA_BASE_PLANOS_IDW, codigoPieza)
-
-    If Not System.IO.Directory.Exists(carpetaPlano) Then
-        System.IO.Directory.CreateDirectory(carpetaPlano)
-    End If
-
-    Dim rutaIDW As String = _
-        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".idw")
-
-    Dim rutaDWF As String = _
-        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".dwf")
-
-    Dim rutaPDF As String = _
-        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".pdf")
-
-    '---------------------------------------------------------
-    ' SI EL PLANO EXISTE, SE ABRE PARA EDITAR (NO SE MACHACA)
-    '---------------------------------------------------------
-
-    If System.IO.File.Exists(rutaIDW) Then
-
-        Dim planoExistente As DrawingDocument = _
-            AbrirPlanoExistenteParaEdicion(invApp, rutaIDW)
-
-        If planoExistente Is Nothing Then
-            MessageBox.Show( _
-                "El plano ya existe pero no se ha podido abrir:" & vbCrLf & vbCrLf & _
-                rutaIDW & vbCrLf & vbCrLf & _
-                "Comprueba que el archivo no esté bloqueado o abierto por otro usuario.", _
-                "Copia y plano de plegado")
-            Exit Sub
-        End If
-
-        MessageBox.Show( _
-            "La pieza se ha copiado correctamente:" & vbCrLf & rutaPiezaDestino & vbCrLf & vbCrLf & _
-            "El plano YA EXISTÍA y NO se ha regenerado:" & vbCrLf & rutaIDW & vbCrLf & vbCrLf & _
-            "Se ha abierto para que puedas editarlo y modificarlo manualmente." & vbCrLf & _
-            "Recuerda reexportar PDF/DWF si haces cambios.", _
-            "Plano existente abierto para edición")
-
-        Exit Sub
-
-    End If
-
-    '---------------------------------------------------------
-    ' EL IDW NO EXISTE -> LIMPIAR PDF/DWF HUERFANOS
-    '---------------------------------------------------------
-
-    Try
-        If System.IO.File.Exists(rutaDWF) Then System.IO.File.Delete(rutaDWF)
-        If System.IO.File.Exists(rutaPDF) Then System.IO.File.Delete(rutaPDF)
-    Catch ex As Exception
-        MessageBox.Show( _
-            "Existen un PDF o DWF antiguos que no se pueden eliminar:" & vbCrLf & vbCrLf & _
-            ex.Message & vbCrLf & vbCrLf & _
-            "Ciérralos o desbloquéalos y vuelve a ejecutar la regla.", _
-            "Copia y plano de plegado")
-        Exit Sub
-    End Try
-
-    '---------------------------------------------------------
-    ' v8.2: ASIGNAR CODIGO DE PLEGADO AUTOMATICO DESDE EL CSV
-    '---------------------------------------------------------
-    ' Orden: iProperty existente > codigo ya asignado a este articulo
-    ' en el CSV > primer codigo DISPONIBLE del CSV (se marca UTILIZADO
-    ' y se guarda el CSV) > regla IPROPERTIES como ultimo recurso.
+    ' CAUSA DEL FALLO ANTERIOR: la copia se hacia ANTES de asignar el
+    ' codigo. Si el IDW ya existia, la regla salia sin asignar nada y
+    ' la copia quedaba en disco SIN el COD DE PLEGADO para siempre.
+    ' Ahora el codigo se asigna y GUARDA en el origen primero, de modo
+    ' que la copia del archivo ya nace con la propiedad dentro,
+    ' en TODOS los caminos posibles (plano nuevo o plano existente).
     Dim codigoPlegadoAsignado As String = ""
 
     Try
@@ -331,63 +242,93 @@ Sub Main()
         Exit Sub
     End If
 
+    '---------------------------------------------------------
+    ' v8.7: PASO 2 - GRABAR Y GUARDAR EL ORIGEN (VERIFICADO)
+    '---------------------------------------------------------
     Try
+        EscribirPropiedadUsuario(piezaOrigen, "COD DE PLEGADO", codigoPlegadoAsignado)
+
         PrepararDesarrolloPlanoEnPiezaOrigen(piezaOrigen)
         piezaOrigen.Update2(True)
         piezaOrigen.Save()
+
+        ' Verificacion: la propiedad debe poder releerse tras guardar.
+        If Trim(LeerPropiedadUsuario(piezaOrigen, "COD DE PLEGADO")) = "" Then
+            Throw New Exception("La propiedad se escribio pero no se puede releer.")
+        End If
     Catch ex As Exception
         MessageBox.Show( _
-            "El COD DE PLEGADO se ha asignado, pero no se ha podido guardar la pieza origen." & _
-            vbCrLf & vbCrLf & ex.Message, _
+            "El COD DE PLEGADO " & codigoPlegadoAsignado & " se ha reservado en el CSV, " & _
+            "pero NO se ha podido guardar en la pieza origen." & vbCrLf & vbCrLf & _
+            "Detalle: " & ex.Message & vbCrLf & vbCrLf & _
+            "Comprueba que la pieza no sea de solo lectura y vuelve a ejecutar. " & _
+            "El codigo reservado se reutilizara (no se gasta otro).", _
             "Código de plegado")
         Exit Sub
     End Try
 
-    ' Sincronizar la copia simplificada después de guardar la pieza origen.
-    If Not String.Equals( _
+    '---------------------------------------------------------
+    ' v8.7: PASO 3 - COPIAR IPT (YA CON EL CODIGO DENTRO)
+    '---------------------------------------------------------
+
+    Dim carpetaPieza As String = _
+        BuscarCarpetaPiezaPorCodigo(RUTA_BASE_PIEZAS, codigoPieza)
+
+    If carpetaPieza = "" Then
+        MessageBox.Show( _
+            "No se ha encontrado la carpeta de rango de la pieza." & vbCrLf & vbCrLf & _
+            "Código: " & codigoPieza & vbCrLf & _
+            "Raíz: " & RUTA_BASE_PIEZAS, _
+            "Copia y plano de plegado")
+        Exit Sub
+    End If
+
+    Dim rutaPiezaDestino As String = _
+        System.IO.Path.Combine(carpetaPieza, codigoPieza & ".ipt")
+
+    If Not CopiarPiezaConConfirmacionIntegrada( _
+        invApp, _
+        piezaOrigen.FullFileName, _
+        rutaPiezaDestino) Then
+
+        Exit Sub
+    End If
+
+    Dim partDoc As PartDocument = Nothing
+
+    If String.Equals( _
         piezaOrigen.FullFileName, _
         rutaPiezaDestino, _
         StringComparison.OrdinalIgnoreCase) Then
 
-        Try
-            CerrarDocumentoPorRutaIntegrada(invApp, rutaPiezaDestino)
-            System.IO.File.Copy(piezaOrigen.FullFileName, rutaPiezaDestino, True)
-
-            partDoc = ObtenerOAbrirPiezaIntegrada(invApp, rutaPiezaDestino)
-
-            If partDoc Is Nothing Then
-                Throw New Exception( _
-                    "La pieza se ha actualizado, pero no se ha podido abrir la copia definitiva:" & _
-                    vbCrLf & rutaPiezaDestino)
-            End If
-        Catch ex As Exception
-            MessageBox.Show( _
-                "El código se ha guardado en la pieza origen, pero no se ha podido actualizar la copia definitiva." & _
-                vbCrLf & vbCrLf & ex.Message, _
-                "Copia de pieza")
-            Exit Sub
-        End Try
-    Else
         partDoc = piezaOrigen
+    Else
+        ' Cerrar cualquier version antigua de la copia que Inventor
+        ' tuviera en memoria (sin propiedad) antes de abrir la nueva.
+        CerrarDocumentoPorRutaIntegrada(invApp, rutaPiezaDestino)
+        partDoc = ObtenerOAbrirPiezaIntegrada(invApp, rutaPiezaDestino)
+    End If
+
+    If partDoc Is Nothing Then
+        MessageBox.Show( _
+            "La pieza se ha copiado, pero no se ha podido abrir:" & vbCrLf & vbCrLf & _
+            rutaPiezaDestino, _
+            "Copia y plano de plegado")
+        Exit Sub
     End If
 
     '---------------------------------------------------------
-    ' v8.3: GARANTIZAR COD DE PLEGADO EN LA COPIA (EN DISCO)
+    ' v8.7: PASO 4 - VERIFICAR EL CODIGO EN LA COPIA (EN DISCO)
     '---------------------------------------------------------
-    ' Antes el guardado fallaba en silencio y la copia de la pieza
-    ' quedaba en disco SIN el COD DE PLEGADO. Ahora se escribe y se
-    ' guarda explicitamente, avisando en pantalla si no se puede.
     Try
-        EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoPlegadoAsignado)
-
-        If partDoc.Dirty Then
-            partDoc.Save()
-        End If
-
-        ' Verificacion final: releer la propiedad.
         If Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO")) = "" Then
-            Throw New Exception( _
-                "La propiedad se escribio pero no se puede releer.")
+            ' Respaldo: escribir y guardar directamente en la copia.
+            EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoPlegadoAsignado)
+            partDoc.Save()
+
+            If Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO")) = "" Then
+                Throw New Exception("La propiedad no se puede releer tras guardar.")
+            End If
         End If
     Catch ex As Exception
         MessageBox.Show( _
@@ -397,6 +338,74 @@ Sub Main()
             "El plano se generara igualmente con el codigo " & codigoPlegadoAsignado & ", " & _
             "pero revisa las iProperties de la copia (archivo bloqueado o de solo lectura).", _
             "Código de plegado - copia")
+    End Try
+
+    '---------------------------------------------------------
+    ' CALCULAR RUTAS FINALES
+    '---------------------------------------------------------
+
+    Dim carpetaPlano As String = _
+        ObtenerCarpetaPlanoIDWPorCodigo(RUTA_BASE_PLANOS_IDW, codigoPieza)
+
+    If Not System.IO.Directory.Exists(carpetaPlano) Then
+        System.IO.Directory.CreateDirectory(carpetaPlano)
+    End If
+
+    Dim rutaIDW As String = _
+        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".idw")
+
+    Dim rutaDWF As String = _
+        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".dwf")
+
+    Dim rutaPDF As String = _
+        System.IO.Path.Combine(carpetaPlano, codigoPieza & ".pdf")
+
+    '---------------------------------------------------------
+    ' SI EL PLANO EXISTE, SE ABRE PARA EDITAR (NO SE MACHACA)
+    '---------------------------------------------------------
+    ' v8.7: este camino ya deja la copia CON su COD DE PLEGADO,
+    ' porque el codigo se asigna y guarda antes de copiar.
+
+    If System.IO.File.Exists(rutaIDW) Then
+
+        Dim planoExistente As DrawingDocument = _
+            AbrirPlanoExistenteParaEdicion(invApp, rutaIDW)
+
+        If planoExistente Is Nothing Then
+            MessageBox.Show( _
+                "El plano ya existe pero no se ha podido abrir:" & vbCrLf & vbCrLf & _
+                rutaIDW & vbCrLf & vbCrLf & _
+                "Comprueba que el archivo no esté bloqueado o abierto por otro usuario.", _
+                "Copia y plano de plegado")
+            Exit Sub
+        End If
+
+        MessageBox.Show( _
+            "La pieza se ha copiado correctamente (con COD DE PLEGADO " & codigoPlegadoAsignado & "):" & vbCrLf & _
+            rutaPiezaDestino & vbCrLf & vbCrLf & _
+            "El plano YA EXISTÍA y NO se ha regenerado:" & vbCrLf & rutaIDW & vbCrLf & vbCrLf & _
+            "Se ha abierto para que puedas editarlo y modificarlo manualmente." & vbCrLf & _
+            "Recuerda reexportar PDF/DWF si haces cambios.", _
+            "Plano existente abierto para edición")
+
+        Exit Sub
+
+    End If
+
+    '---------------------------------------------------------
+    ' EL IDW NO EXISTE -> LIMPIAR PDF/DWF HUERFANOS
+    '---------------------------------------------------------
+
+    Try
+        If System.IO.File.Exists(rutaDWF) Then System.IO.File.Delete(rutaDWF)
+        If System.IO.File.Exists(rutaPDF) Then System.IO.File.Delete(rutaPDF)
+    Catch ex As Exception
+        MessageBox.Show( _
+            "Existen un PDF o DWF antiguos que no se pueden eliminar:" & vbCrLf & vbCrLf & _
+            ex.Message & vbCrLf & vbCrLf & _
+            "Ciérralos o desbloquéalos y vuelve a ejecutar la regla.", _
+            "Copia y plano de plegado")
+        Exit Sub
     End Try
 
     '---------------------------------------------------------
@@ -1901,7 +1910,7 @@ Sub CrearPlanoPlegadoPiezaIndividual(ByVal invApp As Inventor.Application, _
     EscribirPropiedadUsuario(drawingDoc, "MATRIZ", matriz)
     EscribirPropiedadUsuario(drawingDoc, "COD DE PLEGADO", codPlegadoReal)
     EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
-    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.4-ENSAMBLAJE")
+    EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.7-ENSAMBLAJE")
     EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
     EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
     EscribirPropiedadUsuario(drawingDoc, "ESTADO_DISENO", estadoDiseno)
