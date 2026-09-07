@@ -424,3 +424,57 @@ errores del 1,8 %, 0,8 % y 2,2 % antes de poder medirlos. Los 1900 mm/min de
 
 Hace falta una pieza de 8 mm con geometría de Inventor **y** ficha de Lantek de
 la misma revisión: el IPT de 67845, o la ficha de 47690.
+
+
+---
+
+# 1.11: los seis espesores calibrados
+
+47690 y 67845 son la misma pieza de corte con dos códigos, uno para el corte y
+otro para el plegado. Con su ficha de 50 s, la velocidad de 8 mm pasa de 1900
+(acotada) a **2072 mm/min**.
+
+## Tabla final
+
+| Espesor | Gas | Velocidad | Penetración | Entrada | Anidado | Referencia |
+|---|---|---|---|---|---|---|
+| 2 mm | N2 | 3472 | 0,15 s | 3 mm | 0 s | A02848, 18 s |
+| 3 mm | N2 | 3812 | 0,30 s | 3 mm | 0 s | A02690, 8 s |
+| 4 mm | O2 | 3460 | 0,50 s | 4 mm | 0 s | 47689, 35 s |
+| 6 mm | O2 | 2419 | 0,80 s | 5 mm | 2 s | 47678, 30 s |
+| 8 mm | O2 | **2072** | 1,20 s | 5 mm | 5 s | 47690, 50 s |
+| 10 mm | O2 | 1789 | 2,00 s | 6 mm | 5 s | 47691, 16 s |
+
+Los seis reproducen su ficha con desviación nula. Los cuatro adicionales de
+anidado medidos coinciden con la tabla.
+
+## Dónde falla el método de acotación
+
+| Espesor | Cota | Real | Error de la cota | Hueco perímetro bbox vs real |
+|---|---|---|---|---|
+| 4 mm | 3233 | 3460 | −6,6 % | 4 % |
+| 6 mm | 2208 | 2419 | −8,7 % | — |
+| 10 mm | 1725 | 1789 | −3,6 % | — |
+| 8 mm | 1342 | 2072 | **−35 %** | **29 %** |
+
+La cota se calcula con el perímetro del rectángulo. En 8 mm ese perímetro es
+1118 mm y el real 1439,4: un 29 % de hueco, porque la pieza tiene mucha
+geometría interior. **La acotación sólo sirve en piezas cuyo contorno se parece
+a su rectángulo.** El valor que se había puesto a ojo (1900) se quedó un 8,3 %
+corto.
+
+## Aviso: el desarrollo no coincide con el de Lantek
+
+| | 47690 Inventor | 67845 Lantek |
+|---|---|---|
+| Ancho del desarrollo | 122,0 mm | 119 mm |
+| Largo del desarrollo | 439,7 mm | 439,662 mm |
+| Peso neto | 3,067 kg | 2,98 kg |
+
+El largo coincide, pero **el ancho difiere en 3,0 mm** y el peso neto en un
+2,9 %. No es redondeo. O el DXF de Lantek viene de una revisión anterior, o la
+tolerancia de plegado de Inventor ya no es la que se usó para generarlo.
+
+Merece revisarse porque **afecta a la pieza que sale de máquina**, no sólo a
+este cálculo. Sobre la calibración apenas influye: esos 3 mm mueven la velocidad
+un 0,41 %.

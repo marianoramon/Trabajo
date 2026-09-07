@@ -24,7 +24,7 @@ TABLA = {
     3.0:  (3812.0, 0.30, 3.0, 0.0),
     4.0:  (3460.0, 0.50, 4.0, 0.0),
     6.0:  (2419.0, 0.80, 5.0, 2.0),
-    8.0:  (1900.0, 1.20, 5.0, 5.0),
+    8.0:  (2072.0, 1.20, 5.0, 5.0),
     10.0: (1789.0, 2.00, 6.0, 5.0),
 }
 
@@ -48,11 +48,12 @@ REFERENCIAS = [
     # 47689 en Inventor es la misma pieza que 67844 en Lantek.
     ("47689",   4.0, 788.0, 155.1, 35.0, 1957.4, 1, 145.0),
     ("47678",   6.0, 490.0,  62.0, 30.0, 1106.8, 1, 487.2),
-    ("67845",   8.0, 440.0, 119.0, 50.0,   None, None, 0.0),
     ("47691",  10.0,  55.0, 175.0, 16.0,  404.8, 1,  65.1),
-    # 47690 NO es 67845: 122,0x439,7 y 3,067 kg neto frente a 440x119
-    # y 2,98 kg. Distinta revision, su ficha de 50 s no le aplica.
-    ("47690",   8.0, 439.7, 122.0, None, 1439.4, 5, 479.9),
+    # 47690 y 67845 son la misma pieza de corte con dos codigos, uno para
+    # el corte y otro para el plegado. El desarrollo difiere 3 mm en ancho
+    # entre Inventor (122,0) y Lantek (119), lo que mueve la calibracion
+    # un 0,41 %: ruido frente al ajuste, pero revisar por que pasa.
+    ("47690",   8.0, 439.7, 122.0, 50.0, 1439.4, 5, 479.9),
 ]
 
 

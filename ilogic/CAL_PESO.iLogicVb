@@ -1,9 +1,30 @@
 
 ' =============================================================================
 ' REGLA iLOGIC: CALCULO_TIEMPO_Y_PESO_LASER
-' VERSION: 1.10 CINCO ESPESORES CALIBRADOS. SOLO FALTA 8 mm
+' VERSION: 1.11 LOS SEIS ESPESORES DEL CATALOGO CALIBRADOS
 ' ENTORNO: Autodesk Inventor 2026
 ' ALCANCE: METALPLAK - una pieza de chapa IPT activa.
+'
+' CAMBIOS FRENTE A LA 1.10:
+'   Calibrado el perfil de 8 mm. 47690 y 67845 son la misma pieza de
+'   corte con dos codigos, uno para el corte y otro para el plegado. Con
+'   su ficha de 50 s la velocidad pasa de 1900 (acotada) a 2072 mm/min.
+'   Con esto quedan calibrados los seis espesores del catalogo.
+'
+'   La cota fallo aqui mas que en el resto, un 9,1 %, porque se calculo
+'   con el perimetro del rectangulo de la pieza, 1118 mm, y el perimetro
+'   real es 1439,4 mm: un 29 % de hueco, frente al 4 % de 47689. La cota
+'   pierde fuerza en piezas con mucha geometria interior.
+'
+' AVISO, EL DESARROLLO NO COINCIDE CON EL DE LANTEK:
+'   Para esta pieza Inventor da un desarrollo de 122,0 x 439,7 mm y
+'   Lantek uno de 119 x 439,662. El largo coincide, pero el ancho difiere
+'   en 3,0 mm y el peso neto en un 2,9 % (3,067 kg frente a 2,98 kg).
+'   No es redondeo. O el DXF de Lantek viene de una revision anterior, o
+'   la tolerancia de plegado de Inventor ya no es la que se uso para
+'   generarlo. Conviene revisarlo: afecta a la pieza que sale de maquina,
+'   no solo a este calculo. Sobre la calibracion apenas influye, esos
+'   3 mm de ancho mueven la velocidad un 0,41 %.
 '
 ' CAMBIOS FRENTE A LA 1.9:
 '   Calibrado el perfil de 4 mm con 47689, que en Inventor es la misma
@@ -47,10 +68,8 @@
 '
 ' ESTADO DE LA CALIBRACION:
 '   - 2, 3, 6 y 10 mm: CALIBRADOS. La velocidad reproduce la ficha exacta.
-'   - 8 mm: unico espesor acotado. No hay pieza con geometria de Inventor
-'     y ficha de Lantek de la misma revision. El metodo de acotacion se
-'     valido bien: predijo 4, 6 y 10 mm con errores del 1,8 %, 0,8 % y
-'     2,2 %, asi que 8 mm deberia andar igual de cerca.
+'   - Los seis espesores del catalogo estan calibrados. Cada uno
+'     reproduce la ficha de su pieza de referencia con desviacion nula.
 '
 ' SOBRE LOS 2 mm:
 '   Su velocidad ajustada (3472) queda por DEBAJO de la de 3 mm (3812).
@@ -62,8 +81,7 @@
 '   hace falta la ficha de una segunda pieza de 2 mm de contorno sencillo.
 '
 ' PENDIENTE DE DATOS:
-'   - Geometria de Inventor y ficha de Lantek de una pieza de 8 mm de la
-'     MISMA revision. Sirve el IPT de 67845, o la ficha de 47690.
+'   - Por que el desarrollo de 47690 difiere 3 mm del de Lantek.
 '   - Ficha de una pieza de 2 mm de contorno simple, para el punto anterior.
 '   - Tiempo de nesting de los anidados de 2 mm (chapa 0D1) y 3 mm
 '     (chapa 1151575311), unicos adicionales de anidado sin medir.
@@ -498,7 +516,7 @@ Private Sub ObtenerPerfilTecnologia( _
     '     3 mm     2340            3812   ajustado a A02690 (8 s)
     '     4 mm     3233            3460   ajustado a 47689 (35 s)
     '     6 mm     2208            2419   ajustado a 47678 (30 s)
-    '     8 mm     1342            1900   acotado, unico sin ficha
+    '     8 mm     1342            2072   ajustado a 47690 (50 s)
     '    10 mm     1725            1789   ajustado a 47691 (16 s)
     '
     ' El adicional de anidado esta medido comparando ficha y nesting en
@@ -560,12 +578,12 @@ Private Sub ObtenerPerfilTecnologia( _
     End If
 
     If Math.Abs(espesorMm - 8.0) <= toleranciaMm Then
-        velocidadMmMin = 1900.0
+        velocidadMmMin = 2072.0
         penetracionS = 1.2
         entradaMm = 5.0
         adicionalAnidadoS = 5.0
-        descripcion = "8 mm/O2, acotado con 67845, SIN CALIBRAR"
-        calibrado = False
+        descripcion = "8 mm/O2, CALIBRADO con 47690 (ficha 50 s)"
+        calibrado = True
         Exit Sub
     End If
 
@@ -603,7 +621,10 @@ Private Function ObtenerTiempoFichaLantek( _
             Return 35.0
         Case "47678"
             Return 30.0
-        Case "67845"
+        Case "67845", "47690"
+            ' Misma pieza de corte con dos codigos: 47690 es el del corte
+            ' y 67845 el del plegado. El desarrollo difiere 3 mm en ancho
+            ' entre Inventor y Lantek, ver la cabecera.
             Return 50.0
         Case "47691"
             Return 16.0
