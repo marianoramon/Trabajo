@@ -23,14 +23,18 @@ Es un **criterio de imputación de empresa**, no un error. Se mantiene tal cual.
 La 1.6 añade el peso neto real y el porcentaje de aprovechamiento al informe,
 para poder ver de un vistazo cuánto se separa de Lantek en cada pieza.
 
-### 2. Densidad 8050 kg/m³ para MILDSTEEL/ST37
+### 2. Densidad 8050 kg/m³ — CONFIRMADA
 
-El acero al carbono estándar es **7850**. 8050 es el valor típico del inoxidable
-AISI 304. Si la ficha de material de Lantek está a 7850, hay un **+2,55 % fijo**
-en todo el acero al carbono.
+Se sospechó que debía ser 7850 (acero al carbono estándar) y **era incorrecto**.
+Despejada del peso de chapa de tres nestings de `mr04`:
 
-**Pendiente:** comprobar la densidad de la ficha MILDSTEEL/ST37 en Lantek y
-alinear la constante.
+| Chapa | Formato | Peso Lantek | Densidad |
+|---|---|---|---|
+| 0103335440- | 5000 × 1505 × 4 mm | 242,31 kg | 8050,2 |
+| 2J | 6000 × 1507 × 6 mm | 436,73 kg | 8050,0 |
+| 3RB | 4000 × 1510 × 8 mm | 388,98 kg | 8050,1 |
+
+La constante se queda en 8050. Cerrado.
 
 ### 3. Rectángulo envolvente en otra orientación
 
@@ -159,3 +163,107 @@ De cada una: **longitud de corte, número de perforaciones y tiempo de ficha**.
 Con eso se ajustan `VELOCIDAD_CORTE_3MM_MM_MIN` y `PENETRACION_3MM_S` por
 mínimos cuadrados sobre dos incógnitas, en lugar de despejar una sola desde un
 único punto. Los perfiles de 6 mm y el general siguen **sin ningún punto medido**.
+
+
+---
+
+# Datos de `mr04` (07/09/2026) y calibración 1.7
+
+Listado de elementos de trabajo con las seis piezas y tres nestings.
+
+## Piezas de referencia
+
+| Bono | Ref | Espesor | Gas | Rectángulo | Neto | Rect. | Ficha |
+|---|---|---|---|---|---|---|---|
+| 1 | A02848 | 2 mm | N2-120 | 155 × 80 | 0,16 kg | 0,20 kg | 18 s |
+| 2 | A02690 | 3 mm | N2-120 | 131 × 25 | 0,07 kg | 0,08 kg | 8 s |
+| 6 | 67844 | 4 mm | O2-212 | 788 × 155 | 3,73 kg | 3,93 kg | 35 s |
+| 3 | 47678 | 6 mm | O2-212 | 490 × 62 | 1,42 kg | 1,47 kg | 30 s |
+| 4 | 67845 | 8 mm | O2-212 | 440 × 119 | 2,98 kg | 3,37 kg | 50 s |
+| 5 | 47691 | 10 mm | O2-212 | 55 × 175 | 0,49 kg | 0,77 kg | 16 s |
+
+## El cálculo del rectángulo es exacto
+
+Con densidad 8050 la regla reproduce el "Peso del rectángulo" de Lantek en las
+seis piezas; las diferencias son milésimas de redondeo (máx. 0,005 kg). El
+rectángulo, el espesor y la densidad están bien. **Toda la discrepancia de peso
+es el divisor `/2`.**
+
+## El divisor `/2` frente al peso neto
+
+| Ref | Neto Lantek | Imputado regla | Desviación | Aprovechamiento real |
+|---|---|---|---|---|
+| A02848 | 0,16 | 0,10 | −37,5 % | 80,0 % |
+| A02690 | 0,07 | 0,05 | −28,6 % | 87,5 % |
+| 67844 | 3,73 | 2,00 | **−46,4 %** | 94,9 % |
+| 47678 | 1,42 | 0,75 | **−47,2 %** | 96,6 % |
+| 67845 | 2,98 | 1,70 | −43,0 % | 88,4 % |
+| 47691 | 0,49 | 0,40 | −18,4 % | 63,6 % |
+
+El aprovechamiento real va del 64 % al 97 %; el divisor asume 50 % y no lo
+acierta en ninguna pieza. **Es criterio de imputación de empresa y no se cambia
+por iniciativa propia**, pero conviene decidirlo con estos números delante.
+
+## La ficha de A02690 son 8 s, no 10 s
+
+La 1.5 y la 1.6 estaban ancladas a 10 s, un 25 % alto. Con 8 s la velocidad
+calibrada de 3 mm pasa de 2820,6 a **3700 mm/min**:
+
+    t_corte = 8 − 4·0,30 − 116,5/18000·60 = 6,4117 s
+    v_ef    = 395,4 / 6,4117 · 60 = 3700 mm/min
+
+Los 395,4 mm de Lantek **ya incluyen las entradas**: son 383,4 mm de perímetro
+geométrico más 4 entradas de 3 mm. `calibrar.py` recibe el perímetro geométrico,
+no el de Lantek.
+
+Hipótesis de dónde salieron los 10 s: el catálogo tiene dos tecnologías para
+3 mm (Oxygen-212 y Nitrogen-120) y la medida pudo tomarse de la de oxígeno.
+
+## El adicional de anidado no es fijo
+
+| Espesor | Ficha | Nesting | Adicional |
+|---|---|---|---|
+| 4 mm | 35 s | 35 s | **+0 s** |
+| 6 mm | 30 s | 32 s | **+2 s** |
+| 8 mm | 50 s | 55 s | **+5 s** |
+
+La 1.6 sumaba +4 s (3 mm) o +5 s (resto) siempre. Los de 2, 3 y 10 mm siguen sin
+medir; en la tabla van 0, 0 y 7 s, coherentes con la serie pero no medidos.
+**Falta el tiempo de nesting del anidado de 3 mm (chapa 1151575311).**
+
+## Tabla de perfiles 1.7
+
+Sustituye a las tres ramas sueltas de la 1.6, que dejaban cinco de los seis
+espesores en el perfil "general" y con las velocidades invertidas (5000 mm/min a
+6 mm frente a 3100 al resto: más rápido cuanto más grueso).
+
+Sólo 3 mm está calibrado. El resto son valores **acotados, no medidos**: la cota
+inferior es el perímetro del rectángulo de la pieza de referencia dividido entre
+su ficha. Como la longitud real de corte supera ese perímetro, la velocidad real
+es algo mayor que la cota. Los valores elegidos respetan la cota y decrecen con
+el espesor, que es lo mínimo exigible al modelo.
+
+| Espesor | Gas | Cota inferior | Tabla | Penetración | Entrada | Anidado | Estado |
+|---|---|---|---|---|---|---|---|
+| 2 mm | N2 | 1567 | 5000 | 0,15 s | 3 mm | 0 s | extrapolado de 3 mm |
+| 3 mm | N2 | 2340 | **3700** | 0,30 s | 3 mm | 0 s | **calibrado** |
+| 4 mm | O2 | 3233 | 3400 | 0,50 s | 4 mm | 0 s | acotado |
+| 6 mm | O2 | 2208 | 2400 | 0,80 s | 5 mm | 2 s | acotado |
+| 8 mm | O2 | 1342 | 1900 | 1,20 s | 5 mm | 5 s | acotado |
+| 10 mm | O2 | 1725 | 1750 | 2,00 s | 6 mm | 7 s | acotado |
+
+La cota de 2 mm (1567 mm/min) no restringe nada: A02848 tiene un 20 % de su
+rectángulo en agujeros, así que su ficha está dominada por longitud de corte
+interior y penetraciones, no por el perímetro exterior.
+
+## Para cerrar la calibración
+
+Ejecutar la regla sobre los seis IPT y copiar las líneas **"Perímetro
+geométrico"** y **"Contornos"** de cada informe a `REFERENCIAS` en
+`ilogic/calibrar.py`. Con eso el script contrasta el modelo contra las seis
+fichas y despeja la velocidad que cuadraría en cada espesor. Al calcular
+cualquiera de las seis piezas, la regla ya imprime su propia desviación frente
+al tiempo real de Lantek.
+
+Con dos o más piezas por espesor se podrían ajustar velocidad y penetración a la
+vez; con una sola hay que fijar la penetración y despejar la velocidad.
