@@ -1,0 +1,161 @@
+# CAL_PESO — discrepancias frente a Lantek Expert
+
+Notas de la revisión de la versión 1.5 y de los cambios aplicados en la 1.6.
+
+## Resumen
+
+La regla tenía **dos discrepancias estructurales** (peso rectangular/2 y factor
+de calibración aplicado a las penetraciones) y **cuatro defectos** que provocan
+saltos o errores fijos. Ninguno es un fallo de programación en sentido estricto:
+son decisiones de modelo que no reproducen lo que hace Lantek.
+
+## Peso
+
+### 1. `rectángulo / 2` no es el peso que informa Lantek
+
+Lantek da el peso neto de la pieza (área real × espesor × densidad), o el bruto
+del rectángulo envolvente. Dividir el rectángulo entre 2 sólo coincide si el
+aprovechamiento de la pieza dentro de su rectángulo es exactamente del 50 %.
+En piezas compactas ese aprovechamiento está entre 0,70 y 0,90, así que la regla
+queda entre un 30 % y un 45 % por debajo del peso neto.
+
+Es un **criterio de imputación de empresa**, no un error. Se mantiene tal cual.
+La 1.6 añade el peso neto real y el porcentaje de aprovechamiento al informe,
+para poder ver de un vistazo cuánto se separa de Lantek en cada pieza.
+
+### 2. Densidad 8050 kg/m³ para MILDSTEEL/ST37
+
+El acero al carbono estándar es **7850**. 8050 es el valor típico del inoxidable
+AISI 304. Si la ficha de material de Lantek está a 7850, hay un **+2,55 % fijo**
+en todo el acero al carbono.
+
+**Pendiente:** comprobar la densidad de la ficha MILDSTEEL/ST37 en Lantek y
+alinear la constante.
+
+### 3. Rectángulo envolvente en otra orientación
+
+`FlatPattern.Length/Width` es el bounding box en la orientación en la que
+Inventor genera el desarrollo. Lantek gira la pieza al ángulo óptimo del
+nesting, así que su rectángulo puede ser menor. Sin corrección aplicada.
+
+## Tiempo
+
+### 4. El factor empírico se aplicaba también a las penetraciones (causa principal)
+
+En la 1.5:
+
+    factor = 10 / (395,4/3100·60 + 4·2,0 + 116,5/18000·60) = 10 / 16,04 = 0,6234
+
+De los 16,04 s del modelo, **8 s eran penetraciones** (el 50 %), por asumir
+2,0 s por perforación en 3 mm. La perforación real en 3 mm con nitrógeno está
+en torno a 0,2–0,4 s. El factor no corregía la velocidad: compensaba unas
+penetraciones infladas rebajando todos los términos por igual. Los valores
+efectivos que quedaban eran:
+
+| Magnitud | Valor implícito en la 1.5 | Valor plausible |
+|---|---|---|
+| Velocidad de corte | 4973 mm/min | ~2820 mm/min |
+| Penetración por contorno | 1,25 s | ~0,30 s |
+
+Un único factor multiplicativo sobre una suma de términos con proporciones
+distintas no puede ajustar dos familias de piezas a la vez. Efecto medido:
+
+| Geometría | v1.5 | v1.6 | Desviación de la 1.5 |
+|---|---|---|---|
+| Referencia A02690 | 9,86 s | 10,00 s | −1,4 % |
+| Perímetro largo, 2 contornos | 17,21 s | 26,64 s | **−35 %** |
+| 30 agujeros pequeños | 44,89 s | 24,07 s | **+87 %** |
+
+Es decir: la 1.5 **subestima** las piezas de perímetro largo y **sobreestima**
+mucho las piezas con muchos contornos. Es exactamente el patrón de "a veces
+cuadra y a veces no".
+
+**Corrección (1.6):** se calibra la velocidad efectiva despejándola del punto de
+referencia, con la penetración como término independiente:
+
+    t_corte = 10 − 4·0,30 − 116,5/18000·60 = 8,4117 s
+    v_ef    = 395,4 / 8,4117 · 60 = 2820,6 mm/min
+
+Reconstruye la referencia exactamente en 10,000 s.
+
+### 5. Faltaban las entradas y salidas por contorno
+
+Lantek corta una entrada por contorno (2–5 mm) a velocidad de corte, y la
+longitud que informa normalmente ya las incluye. El perímetro de Inventor no.
+Se comparaban dos magnitudes distintas y además la calibración se hizo con ellas
+mezcladas. La 1.6 añade `ENTRADA_*_MM` por perfil (3,0 mm en el de 3 mm) y lo
+suma al perímetro antes de dividir por la velocidad.
+
+### 6. Tolerancia de espesor de ±0,01 mm en la rama de 3 mm
+
+Con una chapa de 2,98 o 3,02 mm la calibración **no entraba** y la pieza caía al
+perfil general: factor 1,0 en vez de 0,62 y +5 s en vez de +4. El tiempo saltaba
+un ~60 % sin ningún aviso. Además era incoherente con el ±0,05 de la rama de
+6 mm. La 1.6 usa ±0,15 mm en ambas.
+
+### 7. Huecos y salto en la escalera de suplementos
+
+El criterio `<5 → +1; >10 y <30 → +5; >30 → +10` deja sin cubrir la banda
+5–10 s y los valores exactos 5, 10 y 30 s, que caían a suplemento **0**:
+
+| Tiempo base | Suplemento 1.5 | Resultado 1.5 |
+|---|---|---|
+| 4,9 s | +1 | 10 s |
+| 5,0 s exacto | +0 | 5 s |
+| 7 s | +0 | 10 s |
+| 10,0 s exacto | +0 | 10 s |
+| 10,1 s | +5 | 20 s |
+| 30,0 s exacto | +0 | 30 s |
+
+Entre 9,9 s y 10,1 s el resultado final salta de 10 s a 20 s, y muchas piezas
+pequeñas caen justo ahí.
+
+**Corrección (1.6):** escalera continua y monótona — `≤5 → +1; ≤30 → +5;
+>30 → +10`.
+
+**CONFIRMAR:** la banda 5–10 s se ha asignado a **+5 s**. Si en producción debe
+ser +1 s, cambiar la primera condición de `ObtenerSuplementoTiempo` a 10,0.
+
+### 8. El adicional de anidado se suma entero a cada pieza
+
+Los +4 s (A02690) y +5 s (A02950) salieron de anidados de **una** unidad. En un
+nesting de N piezas Lantek reparte ese tiempo común entre las N. Comparar contra
+un anidado de 20 piezas sumando 4 s a cada una sobreestima. Sin corrección: haría
+falta conocer el número de piezas del anidado, que la regla no tiene.
+
+### 9. No hay modelo de aceleración
+
+En contornos pequeños (agujeros de Ø8, esquinas vivas) la máquina nunca alcanza
+la velocidad de régimen; Lantek sí lo modela. Las piezas con mucho detalle fino
+se quedan siempre cortas en el término de recorrido. No corregido — requeriría
+un modelo de aceleración o una velocidad efectiva dependiente del radio medio
+del contorno.
+
+## Defectos menores corregidos o señalados
+
+- **Eliminado** el bloque `If codigo.StartsWith("A02950")`: seleccionaba por
+  código de artículo, justo lo que la cabecera dice no hacer.
+- `FlatPattern.TopFace` devuelve **una sola** cara. Si el desarrollo queda
+  partido en varias caras superiores se pierde geometría de corte en silencio.
+  La 1.6 informa del número de contornos y de la longitud, para contrastarlos
+  con la ficha de Lantek.
+- `EdgeLoops` cuenta un contorno por loop. Aristas de partición, marcados o
+  embuticiones cuentan penetraciones que no existen. Mismo control.
+- `EstimarRecorridoRapidoMm` usa el punto medio de la primera arista de cada
+  loop y arranca del mínimo del RangeBox. No reproduce la secuenciación de
+  Lantek, pero a 18000 mm/min aporta menos de 1 s. Sin cambios.
+
+## Para seguir calibrando
+
+Hace falta la ficha de Lantek (**no el anidado**) de 5–6 piezas de acero de
+3 mm con geometrías deliberadamente distintas:
+
+1. Dos o tres de perímetro largo y pocos contornos (chapa recortada, sin
+   agujeros).
+2. Dos o tres con muchos agujeros pequeños (≥20 contornos).
+3. Una intermedia.
+
+De cada una: **longitud de corte, número de perforaciones y tiempo de ficha**.
+Con eso se ajustan `VELOCIDAD_CORTE_3MM_MM_MIN` y `PENETRACION_3MM_S` por
+mínimos cuadrados sobre dos incógnitas, en lugar de despejar una sola desde un
+único punto. Los perfiles de 6 mm y el general siguen **sin ningún punto medido**.
