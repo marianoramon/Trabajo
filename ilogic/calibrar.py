@@ -25,11 +25,20 @@ TABLA = {
     4.0:  (3400.0, 0.50, 4.0, 0.0),
     6.0:  (2419.0, 0.80, 5.0, 2.0),
     8.0:  (1900.0, 1.20, 5.0, 5.0),
-    10.0: (1789.0, 2.00, 6.0, 7.0),
+    10.0: (1789.0, 2.00, 6.0, 5.0),
 }
 
 # Piezas de referencia del trabajo mr04. rectangulo en mm, ficha en s.
 # perimetro y contornos: rellenar con lo que imprime la regla en Inventor.
+# Ficha y tiempo de nesting medidos en mr04, por espesor. La diferencia es
+# el adicional de anidado que suma la regla.
+NESTINGS = {
+    4.0:  (35.0, 35.0),
+    6.0:  (30.0, 32.0),
+    8.0:  (50.0, 55.0),
+    10.0: (16.0, 21.0),
+}
+
 REFERENCIAS = [
     # perimetro_mm y contornos salen del informe de la propia regla.
     # rapidos_mm es el "Desplazamiento rapido estimado" del mismo informe.
@@ -105,6 +114,17 @@ def main():
               % (ref, e, t, ficha, t - ficha, v_aj))
     if not hay:
         print("  ninguna")
+
+    print("\n=== Adicional de anidado: tabla vs medido en mr04 ===")
+    print("  %-8s %8s %9s %10s %9s"
+          % ("espesor", "ficha", "nesting", "medido", "tabla"))
+    for e in sorted(NESTINGS):
+        ficha, nesting = NESTINGS[e]
+        medido = nesting - ficha
+        tabla = TABLA[e][3]
+        ok = "OK" if abs(medido - tabla) < 1e-9 else "NO COINCIDE"
+        print("  %5.0f mm %8.0f %9.0f %10.0f %9.0f  %s"
+              % (e, ficha, nesting, medido, tabla, ok))
 
     faltan = [r[0] for r in REFERENCIAS if r[5] is None or r[4] is None]
     if faltan:

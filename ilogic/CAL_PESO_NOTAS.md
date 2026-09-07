@@ -336,3 +336,35 @@ más. Toda la desviación de peso sigue siendo el divisor `/2`.
   La regla le estima 53,85 s.
 - Tiempo de nesting del anidado de 3 mm (chapa 1151575311).
 - Suplemento de la banda 5-10 s.
+
+
+---
+
+# 1.9: el adicional de anidado de 10 mm era extrapolado
+
+La página 7 del listado de `mr04` (nesting 28734, chapa 1151631516) da el dato
+que faltaba. El anidado de 10 mm tarda **21 s** frente a los 16 s de ficha de
+47691, así que el adicional real es **+5 s**, no los +7 s que se habían
+extrapolado suponiendo que la serie seguía creciendo.
+
+| Espesor | Ficha | Nesting | Adicional |
+|---|---|---|---|
+| 4 mm | 35 s | 35 s | +0 s |
+| 6 mm | 30 s | 32 s | +2 s |
+| 8 mm | 50 s | 55 s | +5 s |
+| **10 mm** | **16 s** | **21 s** | **+5 s** (era +7) |
+
+**La serie se estanca en 5 s**, no crece con el espesor. Con la corrección,
+47691 queda exacto en los dos tiempos: 15,99 s de ficha (Lantek 16 s) y 20,99 s
+de anidado (Lantek 21 s).
+
+Sólo quedan sin medir los adicionales de 2 y 3 mm. Se asumen 0 s, coherente con
+el +0 s medido a 4 mm.
+
+`calibrar.py` incorpora ahora `NESTINGS` y contrasta los cuatro adicionales
+medidos contra la tabla de la regla, igual que ya hacía con las fichas.
+
+## Densidad: cuarta confirmación
+
+Chapa 3000 × 1510 × 10 mm con 364,67 kg → **8050,1 kg/m³**. Cuarta comprobación
+independiente, en el cuarto espesor distinto. Cerrado del todo.

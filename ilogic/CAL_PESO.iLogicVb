@@ -1,9 +1,18 @@
 
 ' =============================================================================
 ' REGLA iLOGIC: CALCULO_TIEMPO_Y_PESO_LASER
-' VERSION: 1.8 CUATRO ESPESORES CALIBRADOS CONTRA FICHA DE LANTEK
+' VERSION: 1.9 ADICIONAL DE ANIDADO DE 10 mm MEDIDO
 ' ENTORNO: Autodesk Inventor 2026
 ' ALCANCE: METALPLAK - una pieza de chapa IPT activa.
+'
+' CAMBIOS FRENTE A LA 1.8:
+'   El adicional de anidado de 10 mm pasa de 7 s (extrapolado) a 5 s
+'   (medido). El nesting 28734 de mr04, chapa 1151631516, tarda 21 s
+'   frente a los 16 s de ficha de 47691. La serie medida es 4 mm +0 s,
+'   6 mm +2 s, 8 mm +5 s y 10 mm +5 s: se estanca, no sigue creciendo.
+'   Con esto 47691 queda exacto en los dos tiempos, 15,99 s de ficha y
+'   20,99 s de anidado. La misma pagina confirma la densidad por cuarta
+'   vez: chapa 3000x1510x10 con 364,67 kg da 8050,1 kg/m3.
 '
 ' CAMBIOS FRENTE A LA 1.7:
 '   Se ejecuto la regla sobre las piezas reales y se ajusto la velocidad
@@ -43,7 +52,8 @@
 '   - Ficha de Lantek de una pieza de 4 mm y otra de 8 mm.
 '   - Ficha de una pieza de 2 mm de contorno simple, para el punto anterior.
 '   - Ficha de 47690, que es de 8 mm pero no estaba en mr04.
-'   - Tiempo de nesting del anidado de 3 mm (chapa 1151575311).
+'   - Tiempo de nesting de los anidados de 2 mm (chapa 0D1) y 3 mm
+'     (chapa 1151575311), unicos adicionales de anidado sin medir.
 '   - Suplemento aplicable a la banda 5-10 s, no definido en el criterio.
 '   - El criterio de peso rectangulo/2 imputa entre un 18 % y un 47 %
 '     menos que el peso neto de Lantek. Es criterio de empresa y no se
@@ -479,8 +489,9 @@ Private Sub ObtenerPerfilTecnologia( _
     '    10 mm     1725            1789   ajustado a 47691 (16 s)
     '
     ' El adicional de anidado esta medido comparando ficha y nesting en
-    ' mr04: 4 mm +0 s, 6 mm +2 s, 8 mm +5 s. Los de 2, 3 y 10 mm son
-    ' coherentes con esa serie pero no estan medidos.
+    ' mr04: 4 mm +0 s, 6 mm +2 s, 8 mm +5 s, 10 mm +5 s. La serie no
+    ' crece indefinidamente, se estanca en 5 s. Los de 2 y 3 mm siguen
+    ' sin medir; se asumen 0 s, coherente con el +0 s medido a 4 mm.
 
     ' Perfil de reserva para cualquier espesor fuera del catalogo.
     velocidadMmMin = 2500.0
@@ -549,7 +560,7 @@ Private Sub ObtenerPerfilTecnologia( _
         velocidadMmMin = 1789.0
         penetracionS = 2.0
         entradaMm = 6.0
-        adicionalAnidadoS = 7.0
+        adicionalAnidadoS = 5.0
         descripcion = "10 mm/O2, CALIBRADO con 47691 (ficha 16 s)"
         calibrado = True
         Exit Sub
