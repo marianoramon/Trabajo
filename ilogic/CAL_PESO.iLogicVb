@@ -1,9 +1,17 @@
 
 ' =============================================================================
 ' REGLA iLOGIC: CALCULO_TIEMPO_Y_PESO_LASER
-' VERSION: 1.11 LOS SEIS ESPESORES DEL CATALOGO CALIBRADOS
+' VERSION: 1.12 RESUMEN DESTACADO AL PIE DE LA VENTANA
 ' ENTORNO: Autodesk Inventor 2026
 ' ALCANCE: METALPLAK - una pieza de chapa IPT activa.
+'
+' CAMBIOS FRENTE A LA 1.11:
+'   El informe sale ahora en una ventana propia en vez de un MessageBox,
+'   que no admite negrita ni tamanos de letra. El detalle completo se
+'   mantiene arriba, en un cuadro con scroll, y al pie, justo encima del
+'   boton Aceptar, van los dos datos de uso diario en letra grande y
+'   negrita: el peso imputado y el tiempo imputado. Debajo de cada uno,
+'   en letra pequena, el valor sin redondear del que sale.
 '
 ' CAMBIOS FRENTE A LA 1.10:
 '   Calibrado el perfil de 8 mm. 47690 y 67845 son la misma pieza de
@@ -461,11 +469,11 @@ Sub Main()
         ThisApplication.StatusBarText = _
             "Calculo laser completado para " & codigo & "."
 
-        System.Windows.Forms.MessageBox.Show( _
-            resultado.ToString(), _
+        MostrarResultado( _
             "CALCULO LASER - " & codigo, _
-            System.Windows.Forms.MessageBoxButtons.OK, _
-            System.Windows.Forms.MessageBoxIcon.Information)
+            resultado.ToString(), _
+            pesoDivididoKg, pesoFinalKg, _
+            tiempoAntesRedondeoS, tiempoFinalS)
 
     Catch ex As Exception
         ThisApplication.StatusBarText = _
@@ -476,6 +484,138 @@ Sub Main()
     End Try
 
 End Sub
+
+Private Sub MostrarResultado( _
+    ByVal titulo As String, _
+    ByVal detalle As String, _
+    ByVal pesoDivididoKg As Double, _
+    ByVal pesoFinalKg As Double, _
+    ByVal tiempoAntesRedondeoS As Double, _
+    ByVal tiempoFinalS As Double)
+
+    ' Ventana propia en lugar de MessageBox: hace falta para poder sacar
+    ' el resumen del pie en negrita y con letra mas grande.
+
+    Dim formulario As System.Windows.Forms.Form = Nothing
+
+    Try
+        Dim anclaInferior As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Bottom Or _
+            System.Windows.Forms.AnchorStyles.Left Or _
+            System.Windows.Forms.AnchorStyles.Right
+
+        formulario = New System.Windows.Forms.Form()
+        formulario.Text = titulo
+        formulario.ClientSize = New System.Drawing.Size(580, 720)
+        formulario.MinimumSize = New System.Drawing.Size(540, 520)
+        formulario.StartPosition = _
+            System.Windows.Forms.FormStartPosition.CenterScreen
+        formulario.MaximizeBox = False
+        formulario.MinimizeBox = False
+        formulario.ShowInTaskbar = False
+
+        Dim cuadroDetalle As New System.Windows.Forms.TextBox()
+        cuadroDetalle.Multiline = True
+        cuadroDetalle.ReadOnly = True
+        cuadroDetalle.WordWrap = False
+        cuadroDetalle.ScrollBars = System.Windows.Forms.ScrollBars.Both
+        cuadroDetalle.Font = New System.Drawing.Font("Consolas", 9.0!)
+        cuadroDetalle.Text = detalle
+        cuadroDetalle.SetBounds(10, 10, 560, 540)
+        cuadroDetalle.Anchor = _
+            System.Windows.Forms.AnchorStyles.Top Or anclaInferior
+
+        Dim separador As New System.Windows.Forms.Label()
+        separador.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D
+        separador.SetBounds(10, 558, 560, 2)
+        separador.Anchor = anclaInferior
+
+        Dim fuenteResumen As New System.Drawing.Font( _
+            "Segoe UI", 16.0!, System.Drawing.FontStyle.Bold)
+        Dim fuenteDetalleResumen As New System.Drawing.Font( _
+            "Segoe UI", 8.5!)
+
+        Dim etiquetaPeso As New System.Windows.Forms.Label()
+        etiquetaPeso.Font = fuenteResumen
+        etiquetaPeso.Text = _
+            "PESO:  " & Formato(pesoFinalKg, 2) & " kg/ud"
+        etiquetaPeso.SetBounds(10, 566, 560, 34)
+        etiquetaPeso.Anchor = anclaInferior
+
+        Dim etiquetaPesoDetalle As New System.Windows.Forms.Label()
+        etiquetaPesoDetalle.Font = fuenteDetalleResumen
+        etiquetaPesoDetalle.ForeColor = System.Drawing.SystemColors.GrayText
+        etiquetaPesoDetalle.Text = _
+            "rectangulo / 2 = " & Formato(pesoDivididoKg, 3) & _
+            " kg, redondeado hacia arriba a 0,05"
+        etiquetaPesoDetalle.SetBounds(12, 600, 558, 16)
+        etiquetaPesoDetalle.Anchor = anclaInferior
+
+        Dim etiquetaTiempo As New System.Windows.Forms.Label()
+        etiquetaTiempo.Font = fuenteResumen
+        etiquetaTiempo.Text = _
+            "TIEMPO:  " & FormatoTiempoCorto(tiempoFinalS)
+        etiquetaTiempo.SetBounds(10, 620, 560, 34)
+        etiquetaTiempo.Anchor = anclaInferior
+
+        Dim etiquetaTiempoDetalle As New System.Windows.Forms.Label()
+        etiquetaTiempoDetalle.Font = fuenteDetalleResumen
+        etiquetaTiempoDetalle.ForeColor = System.Drawing.SystemColors.GrayText
+        etiquetaTiempoDetalle.Text = _
+            "corte + suplemento = " & Formato(tiempoAntesRedondeoS, 2) & _
+            " s, redondeado hacia arriba a 5 s"
+        etiquetaTiempoDetalle.SetBounds(12, 654, 558, 16)
+        etiquetaTiempoDetalle.Anchor = anclaInferior
+
+        Dim botonAceptar As New System.Windows.Forms.Button()
+        botonAceptar.Text = "Aceptar"
+        botonAceptar.DialogResult = System.Windows.Forms.DialogResult.OK
+        botonAceptar.SetBounds(490, 678, 80, 30)
+        botonAceptar.Anchor = _
+            System.Windows.Forms.AnchorStyles.Bottom Or _
+            System.Windows.Forms.AnchorStyles.Right
+
+        formulario.Controls.Add(cuadroDetalle)
+        formulario.Controls.Add(separador)
+        formulario.Controls.Add(etiquetaPeso)
+        formulario.Controls.Add(etiquetaPesoDetalle)
+        formulario.Controls.Add(etiquetaTiempo)
+        formulario.Controls.Add(etiquetaTiempoDetalle)
+        formulario.Controls.Add(botonAceptar)
+
+        formulario.AcceptButton = botonAceptar
+        formulario.CancelButton = botonAceptar
+
+        ' El cursor arranca al principio del informe, no seleccionandolo.
+        cuadroDetalle.Select(0, 0)
+        botonAceptar.Select()
+
+        formulario.ShowDialog()
+
+    Catch
+        ' Si el formulario falla por lo que sea, el informe no se pierde.
+        System.Windows.Forms.MessageBox.Show( _
+            detalle, titulo, _
+            System.Windows.Forms.MessageBoxButtons.OK, _
+            System.Windows.Forms.MessageBoxIcon.Information)
+    Finally
+        If formulario IsNot Nothing Then formulario.Dispose()
+    End Try
+
+End Sub
+
+Private Function FormatoTiempoCorto(ByVal segundos As Double) As String
+    If segundos < 0.0 Then segundos = 0.0
+
+    Dim total As Integer = _
+        CInt(Math.Round( _
+            segundos, 0, System.MidpointRounding.AwayFromZero))
+
+    If total < 60 Then Return total.ToString() & " s"
+
+    Return (total \ 60).ToString() & " min " & _
+        (total Mod 60).ToString("00") & " s"
+End Function
 
 Private Sub ObtenerPerfilTecnologia( _
     ByVal esAcero As Boolean, _

@@ -478,3 +478,35 @@ tolerancia de plegado de Inventor ya no es la que se usó para generarlo.
 Merece revisarse porque **afecta a la pieza que sale de máquina**, no sólo a
 este cálculo. Sobre la calibración apenas influye: esos 3 mm mueven la velocidad
 un 0,41 %.
+
+
+---
+
+# 1.12: resumen destacado al pie de la ventana
+
+El informe salía en un `MessageBox`, que sólo admite texto plano: ni negrita ni
+tamaños de letra. Se sustituye por un formulario propio.
+
+- El **detalle completo** se mantiene arriba, en un cuadro con scroll y fuente
+  monoespaciada. No se ha quitado nada.
+- Al pie, **justo encima del botón Aceptar**, los dos datos de uso diario en
+  Segoe UI 16 pt negrita:
+
+```
+  PESO:  1,75 kg/ud
+    rectangulo / 2 = 1,727 kg, redondeado hacia arriba a 0,05
+
+  TIEMPO:  1 min 10 s
+    corte + suplemento = 68,85 s, redondeado hacia arriba a 5 s
+                                                    [ Aceptar ]
+```
+
+Bajo cada cifra grande, en 8,5 pt gris, el valor sin redondear del que sale: el
+peso del rectángulo partido por 2, y el tiempo de corte más el suplemento. Así
+se ve de un vistazo lo que hay que imputar sin perder de dónde viene.
+
+`FormatoTiempoCorto` es nueva: da `18 s` por debajo del minuto y `1 min 10 s` por
+encima, en vez del `0 min 18 s (18,20 s)` del informe largo.
+
+Si la creación del formulario fallara por lo que sea, hay un `Catch` que vuelve
+al `MessageBox` de siempre, así que el informe nunca se pierde.
