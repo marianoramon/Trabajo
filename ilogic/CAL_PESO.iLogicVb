@@ -1,47 +1,55 @@
 
 ' =============================================================================
 ' REGLA iLOGIC: CALCULO_TIEMPO_Y_PESO_LASER
-' VERSION: 1.7 TABLA DE PERFILES POR ESPESOR, CALIBRADA CON mr04
+' VERSION: 1.8 CUATRO ESPESORES CALIBRADOS CONTRA FICHA DE LANTEK
 ' ENTORNO: Autodesk Inventor 2026
 ' ALCANCE: METALPLAK - una pieza de chapa IPT activa.
 '
-' CAMBIOS FRENTE A LA 1.6 (detalle en CAL_PESO_NOTAS.md):
-'   1. Tabla de perfiles por espesor real del catalogo de la maquina
-'      DURMA FIBRA 4 METROS: 2, 3, 4, 6, 8 y 10 mm, cada uno con su gas.
-'      Sustituye a las tres ramas sueltas (3 mm, 6 mm y general), que
-'      dejaban cinco de los seis espesores en un perfil sin calibrar y
-'      con las velocidades invertidas: 5000 mm/min a 6 mm frente a 3100
-'      al resto, es decir mas rapido cuanto mas grueso.
-'   2. Densidad CONFIRMADA en 8050 kg/m3. Despejada del peso de chapa de
-'      tres nestings del trabajo mr04: 5000x1505x4 = 242,31 kg -> 8050,2;
-'      6000x1507x6 = 436,73 kg -> 8050,0; 4000x1510x8 = 388,98 kg -> 8050,1.
-'   3. La referencia de A02690 pasa de 10 s a 8 s, que es lo que informa
-'      el listado de elementos de trabajo de mr04. La velocidad calibrada
-'      de 3 mm pasa de 2820,6 a 3700 mm/min.
-'   4. El adicional de anidado deja de ser fijo. Medido en mr04 comparando
-'      ficha y nesting: 4 mm +0 s, 6 mm +2 s, 8 mm +5 s.
-'   5. Se incorporan los tiempos de ficha medidos de las seis piezas de
-'      mr04. Al calcular una de ellas la regla informa de la desviacion
-'      frente a Lantek, para cerrar la calibracion sin salir de Inventor.
+' CAMBIOS FRENTE A LA 1.7:
+'   Se ejecuto la regla sobre las piezas reales y se ajusto la velocidad
+'   de cada espesor para que reproduzca su ficha de Lantek. Antes solo
+'   3 mm estaba calibrado y con un perimetro supuesto.
+'
+'     espesor  pieza     v 1.7   v 1.8   desviacion que tenia la 1.7
+'       2 mm   A02848     5000    3472         -26,66 %
+'       3 mm   A02690     3700    3812          +2,44 %
+'       6 mm   47678      2400    2419          +0,73 %
+'      10 mm   47691      1750    1789          +1,88 %
+'
+'   El perimetro que informa Inventor para A02690 es 395,4 mm, el mismo
+'   valor que Lantek da como longitud de corte. Es decir, la longitud de
+'   Lantek NO incluye las entradas, al contrario de lo que suponia la 1.6.
+'   Las entradas siguen en el modelo porque la maquina si las corta y su
+'   tiempo esta dentro de la ficha, pero no son comparables con la
+'   longitud que informa Lantek. El diagnostico compara ya el perimetro
+'   geometrico, no la longitud total.
 '
 ' ESTADO DE LA CALIBRACION:
-'   - 3 mm/N2: unico espesor calibrado, con A02690 (ficha 8 s).
-'   - 2 mm/N2: velocidad extrapolada desde 3 mm. Sin calibrar.
-'   - 4, 6, 8 y 10 mm/O2: velocidad ACOTADA, no medida. La cota inferior
-'     sale de dividir el perimetro del rectangulo de la pieza de
-'     referencia entre su tiempo de ficha; la longitud real de corte es
-'     mayor que ese perimetro, asi que la velocidad real es algo mayor.
-'     Los valores de la tabla respetan esa cota y son monotonos
-'     decrecientes con el espesor.
+'   - 2, 3, 6 y 10 mm: CALIBRADOS. La velocidad reproduce la ficha exacta.
+'   - 4 y 8 mm: acotados, sin pieza de referencia con ficha conocida. El
+'     metodo de acotacion se valido bien: predijo 6 y 10 mm con un error
+'     del 0,8 % y del 2,2 %, asi que estos dos deberian andar cerca.
 '
-' PENDIENTE DE DATOS (ver NOTAS):
-'   - Longitud de corte y numero de perforaciones de las seis piezas de
-'     mr04. Con eso se ajustan velocidad y penetracion a la vez.
+' SOBRE LOS 2 mm:
+'   Su velocidad ajustada (3472) queda por DEBAJO de la de 3 mm (3812).
+'   No es un error de la tabla. La velocidad de este modelo es efectiva:
+'   absorbe las aceleraciones y deceleraciones, que pesan mas cuanto mas
+'   fragmentada es la pieza. A02848 son 8 contornos en una chapa de
+'   155x80, con 885 mm de perimetro. En una pieza de 2 mm simple este
+'   perfil sobreestimara el tiempo. Para separar velocidad de aceleracion
+'   hace falta la ficha de una segunda pieza de 2 mm de contorno sencillo.
+'
+' PENDIENTE DE DATOS:
+'   - Ficha de Lantek de una pieza de 4 mm y otra de 8 mm.
+'   - Ficha de una pieza de 2 mm de contorno simple, para el punto anterior.
+'   - Ficha de 47690, que es de 8 mm pero no estaba en mr04.
 '   - Tiempo de nesting del anidado de 3 mm (chapa 1151575311).
 '   - Suplemento aplicable a la banda 5-10 s, no definido en el criterio.
 '   - El criterio de peso rectangulo/2 imputa entre un 18 % y un 47 %
 '     menos que el peso neto de Lantek. Es criterio de empresa y no se
-'     cambia, pero la regla ya informa de ambos.
+'     cambia, pero la regla ya informa de ambos. El peso NETO que calcula
+'     la regla si coincide exacto con el de Lantek en las cuatro piezas
+'     contrastadas.
 ' =============================================================================
 
 Sub Main()
@@ -395,7 +403,10 @@ Sub Main()
         resultado.AppendLine( _
             "Comprueba que Lantek indique " & numeroContornos.ToString() & _
             " perforaciones y una longitud de corte proxima a " & _
-            Formato(longitudCorteMm, 1) & " mm.")
+            Formato(perimetroMm, 1) & " mm.")
+        resultado.AppendLine( _
+            "La longitud que informa Lantek es el perimetro geometrico," & _
+            " sin las entradas.")
         resultado.AppendLine( _
             "Si el numero de contornos no coincide, la cara superior del" & _
             " desarrollo tiene aristas de particion o falta geometria.")
@@ -459,13 +470,13 @@ Private Sub ObtenerPerfilTecnologia( _
     ' valores elegidos respetan la cota y son monotonos decrecientes con el
     ' espesor, que es lo minimo que debe cumplir el modelo.
     '
-    '   espesor  cota inferior   valor en tabla
-    '     2 mm     1567            5000   extrapolado de 3 mm, no acota
-    '     3 mm     2340            3700   CALIBRADO
-    '     4 mm     3233            3400
-    '     6 mm     2208            2400
-    '     8 mm     1342            1900
-    '    10 mm     1725            1750
+    '   espesor  cota inferior   tabla   origen
+    '     2 mm     1567            3472   ajustado a A02848 (18 s)
+    '     3 mm     2340            3812   ajustado a A02690 (8 s)
+    '     4 mm     3233            3400   acotado, sin ficha
+    '     6 mm     2208            2419   ajustado a 47678 (30 s)
+    '     8 mm     1342            1900   acotado, sin ficha
+    '    10 mm     1725            1789   ajustado a 47691 (16 s)
     '
     ' El adicional de anidado esta medido comparando ficha y nesting en
     ' mr04: 4 mm +0 s, 6 mm +2 s, 8 mm +5 s. Los de 2, 3 y 10 mm son
@@ -485,17 +496,17 @@ Private Sub ObtenerPerfilTecnologia( _
     End If
 
     If Math.Abs(espesorMm - 2.0) <= toleranciaMm Then
-        velocidadMmMin = 5000.0
+        velocidadMmMin = 3472.0
         penetracionS = 0.15
         entradaMm = 3.0
         adicionalAnidadoS = 0.0
-        descripcion = "2 mm/N2, extrapolado de 3 mm, SIN CALIBRAR"
-        calibrado = False
+        descripcion = "2 mm/N2, CALIBRADO con A02848 (ficha 18 s)"
+        calibrado = True
         Exit Sub
     End If
 
     If Math.Abs(espesorMm - 3.0) <= toleranciaMm Then
-        velocidadMmMin = 3700.0
+        velocidadMmMin = 3812.0
         penetracionS = 0.3
         entradaMm = 3.0
         adicionalAnidadoS = 0.0
@@ -515,12 +526,12 @@ Private Sub ObtenerPerfilTecnologia( _
     End If
 
     If Math.Abs(espesorMm - 6.0) <= toleranciaMm Then
-        velocidadMmMin = 2400.0
+        velocidadMmMin = 2419.0
         penetracionS = 0.8
         entradaMm = 5.0
         adicionalAnidadoS = 2.0
-        descripcion = "6 mm/O2, acotado con 47678, SIN CALIBRAR"
-        calibrado = False
+        descripcion = "6 mm/O2, CALIBRADO con 47678 (ficha 30 s)"
+        calibrado = True
         Exit Sub
     End If
 
@@ -535,12 +546,12 @@ Private Sub ObtenerPerfilTecnologia( _
     End If
 
     If Math.Abs(espesorMm - 10.0) <= toleranciaMm Then
-        velocidadMmMin = 1750.0
+        velocidadMmMin = 1789.0
         penetracionS = 2.0
         entradaMm = 6.0
         adicionalAnidadoS = 7.0
-        descripcion = "10 mm/O2, acotado con 47691, SIN CALIBRAR"
-        calibrado = False
+        descripcion = "10 mm/O2, CALIBRADO con 47691 (ficha 16 s)"
+        calibrado = True
         Exit Sub
     End If
 

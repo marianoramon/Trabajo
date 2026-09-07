@@ -267,3 +267,72 @@ al tiempo real de Lantek.
 
 Con dos o más piezas por espesor se podrían ajustar velocidad y penetración a la
 vez; con una sola hay que fijar la penetración y despejar la velocidad.
+
+
+---
+
+# Calibración 1.8: cuatro espesores ajustados contra ficha
+
+Se ejecutó la regla 1.7 sobre las piezas reales en Inventor y se ajustó la
+velocidad de cada espesor para que reproduzca su ficha de Lantek.
+
+## Desviación que tenía la 1.7 y velocidad resultante
+
+| Espesor | Pieza | Perímetro | Cont. | Regla 1.7 | Lantek | Desv. | v 1.7 | **v 1.8** |
+|---|---|---|---|---|---|---|---|---|
+| 2 mm | A02848 | 885,0 | 8 | 13,20 s | 18 s | **−26,66 %** | 5000 | **3472** |
+| 3 mm | A02690 | 395,4 | 4 | 8,19 s | 8 s | +2,44 % | 3700 | **3812** |
+| 6 mm | 47678 | 1106,8 | 1 | 30,22 s | 30 s | +0,73 % | 2400 | **2419** |
+| 10 mm | 47691 | 404,8 | 1 | 16,30 s | 16 s | +1,88 % | 1750 | **1789** |
+
+Los cuatro reproducen ahora su ficha con error nulo.
+
+**El método de acotación se validó bien.** Las velocidades de 6 y 10 mm eran
+estimaciones sin medir y quedaron a un 0,8 % y un 2,2 % del valor real. Las de
+4 y 8 mm, que siguen sin pieza de referencia, deberían andar igual de cerca.
+
+## La longitud que informa Lantek no incluye las entradas
+
+El perímetro que Inventor da para A02690 es **395,4 mm**, exactamente el valor
+que Lantek informa como longitud de corte. La suposición de la 1.6 —que la
+longitud de Lantek ya incluía las entradas— era incorrecta.
+
+Las entradas siguen en el modelo porque la máquina las corta y su tiempo está
+dentro de la ficha, pero no son comparables con la longitud que informa Lantek.
+El diagnóstico de la regla compara ya el perímetro geométrico.
+
+## Los 2 mm quedan por debajo de los 3 mm, y no es un error
+
+La velocidad ajustada de 2 mm (3472) es menor que la de 3 mm (3812). La
+velocidad de este modelo es **efectiva**: absorbe aceleraciones y
+deceleraciones, que pesan más cuanto más fragmentada es la pieza. A02848 son
+8 contornos en una chapa de 155 × 80 con 885 mm de perímetro; A02690 son 4
+contornos en 131 × 25.
+
+Consecuencia práctica: en una pieza de 2 mm de contorno sencillo este perfil
+**sobreestimará** el tiempo. Para separar velocidad de aceleración hace falta la
+ficha de una segunda pieza de 2 mm simple.
+
+## El peso neto sí coincide exacto
+
+| Ref | Neto regla | Neto Lantek |
+|---|---|---|
+| A02848 | 0,165 kg | 0,16 kg |
+| A02690 | 0,069 kg | 0,07 kg |
+| 47678 | 1,423 kg | 1,42 kg |
+| 47691 | 0,490 kg | 0,49 kg |
+
+El área de la cara superior del desarrollo está bien calculada. Si algún día se
+cambia el criterio de imputación al peso neto, cuadra con Lantek sin tocar nada
+más. Toda la desviación de peso sigue siendo el divisor `/2`.
+
+## Sigue pendiente
+
+- Ficha de Lantek de una pieza de **4 mm** y otra de **8 mm**.
+- Ficha de una pieza de **2 mm de contorno simple**, para separar velocidad de
+  aceleración.
+- Ficha de **47690** (8 mm, `CAJ REF APO EJE3000 PL`): se calculó con la regla
+  pero no estaba en `mr04`, así que no hay tiempo real contra el que contrastar.
+  La regla le estima 53,85 s.
+- Tiempo de nesting del anidado de 3 mm (chapa 1151575311).
+- Suplemento de la banda 5-10 s.
