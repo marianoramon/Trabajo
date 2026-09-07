@@ -1,9 +1,25 @@
-
+AddReference "System.Drawing.Primitives"
+AddReference "System.Drawing.Common"
+' Las dos lineas de arriba son OBLIGATORIAS y deben quedar las PRIMERAS
+' del fichero. Inventor 2026 corre sobre .NET 8, donde System.Drawing
+' esta repartido en ensamblados que iLogic no referencia por defecto:
+' Size y Color estan en System.Drawing.Primitives, y Font, FontStyle y
+' SystemColors en System.Drawing.Common. Sin ellas la regla no compila y
+' da "Es necesaria una referencia al ensamblado ... Agregue una al
+' proyecto" en cuanto se construye la ventana de resultados.
 ' =============================================================================
 ' REGLA iLOGIC: CALCULO_TIEMPO_Y_PESO_LASER
-' VERSION: 1.12 RESUMEN DESTACADO AL PIE DE LA VENTANA
+' VERSION: 1.13 REFERENCIAS DE System.Drawing PARA .NET 8
 ' ENTORNO: Autodesk Inventor 2026
 ' ALCANCE: METALPLAK - una pieza de chapa IPT activa.
+'
+' CAMBIOS FRENTE A LA 1.12:
+'   La 1.12 no compilaba en Inventor 2026. Al pasar del MessageBox a una
+'   ventana propia se empezaron a usar System.Drawing.Size, .Font,
+'   .FontStyle y .SystemColors, y en .NET 8 esos tipos viven en
+'   ensamblados que iLogic no referencia por defecto. Se anaden las dos
+'   directivas AddReference al principio del fichero. No moverlas ni
+'   borrarlas.
 '
 ' CAMBIOS FRENTE A LA 1.11:
 '   El informe sale ahora en una ventana propia en vez de un MessageBox,

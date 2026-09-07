@@ -510,3 +510,50 @@ encima, en vez del `0 min 18 s (18,20 s)` del informe largo.
 
 Si la creación del formulario fallara por lo que sea, hay un `Catch` que vuelve
 al `MessageBox` de siempre, así que el informe nunca se pierde.
+
+
+---
+
+# 1.13: la 1.12 no compilaba en Inventor 2026
+
+Al pasar del `MessageBox` a una ventana propia, la 1.12 empezó a usar tipos de
+`System.Drawing`. Inventor 2026 corre sobre **.NET 8**, donde ese espacio de
+nombres está repartido en ensamblados que iLogic **no referencia por defecto**:
+
+| Tipo usado | Ensamblado |
+|---|---|
+| `System.Drawing.Size` | `System.Drawing.Primitives` |
+| `System.Drawing.Font` | `System.Drawing.Common` |
+| `System.Drawing.FontStyle` | `System.Drawing.Common` |
+| `System.Drawing.SystemColors` | `System.Drawing.Common` |
+
+El error era *"Es necesaria una referencia al ensamblado ... Agregue una al
+proyecto"* en las líneas donde se construye la ventana.
+
+La solución son dos directivas al principio del fichero:
+
+```vb
+AddReference "System.Drawing.Primitives"
+AddReference "System.Drawing.Common"
+```
+
+**Deben quedar como las dos primeras líneas del fichero.** Si se mueven o se
+borran, la regla deja de compilar entera, no sólo la ventana. El `Try/Catch` de
+`MostrarResultado` no protege de esto: cubre fallos en tiempo de ejecución, y un
+error de compilación tumba la regla antes de llegar a ejecutarse.
+
+## Plan B si `AddReference` no resolviera
+
+Construir la fuente por enlace tardío, sin dependencia en tiempo de compilación:
+
+```vb
+Dim tipoFuente As System.Type = System.Type.GetType( _
+    "System.Drawing.Font, System.Drawing.Common")
+Dim fuente As Object = System.Activator.CreateInstance( _
+    tipoFuente, New Object() {"Segoe UI", 16.0F, 1})
+```
+
+Con `Option Strict` desactivado —el valor por defecto de iLogic— la asignación a
+`etiqueta.Font` se resuelve en ejecución. Es más frágil de mantener, pero
+compila siempre y cualquier fallo cae en el `Catch` que devuelve al
+`MessageBox`.
