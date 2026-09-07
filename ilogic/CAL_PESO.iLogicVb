@@ -56,11 +56,11 @@ AddReference "System.Drawing.Common"
 '   rectangular 3,93 kg coinciden en los dos sistemas, solo cambia el
 '   codigo. La velocidad pasa de 3400 (acotada) a 3460 mm/min, un 1,8 %.
 '
-'   CUIDADO CON 47690: no es 67845. En Inventor mide 122,0 x 439,7 y pesa
-'   3,067 kg neto; en Lantek 67845 mide 440 x 119 y pesa 2,98 kg. El ancho
-'   difiere en 3 mm y el peso en un 2,9 %, cifras coherentes entre si, asi
-'   que no es redondeo: son piezas o revisiones distintas. Por eso la ficha
-'   de 50 s de 67845 NO se aplica a 47690 y 8 mm sigue sin calibrar.
+'   En esta version se penso que 47690 y 67845 eran piezas distintas por
+'   los 3 mm de diferencia en el ancho del desarrollo. Era una conclusion
+'   equivocada: son la misma pieza de corte con dos codigos. Corregido en
+'   la 1.11, que calibra 8 mm con su ficha. La diferencia de 3 mm sigue
+'   siendo real y esta explicada en el aviso de mas arriba.
 '
 ' CAMBIOS FRENTE A LA 1.8:
 '   El adicional de anidado de 10 mm pasa de 7 s (extrapolado) a 5 s
@@ -91,9 +91,16 @@ AddReference "System.Drawing.Common"
 '   geometrico, no la longitud total.
 '
 ' ESTADO DE LA CALIBRACION:
-'   - 2, 3, 6 y 10 mm: CALIBRADOS. La velocidad reproduce la ficha exacta.
-'   - Los seis espesores del catalogo estan calibrados. Cada uno
-'     reproduce la ficha de su pieza de referencia con desviacion nula.
+'   Los seis espesores del catalogo estan calibrados. Cada uno reproduce
+'   la ficha de su pieza de referencia con desviacion nula.
+'
+'     espesor  gas   velocidad   referencia
+'       2 mm   N2       3472     A02848, ficha 18 s
+'       3 mm   N2       3812     A02690, ficha  8 s
+'       4 mm   O2       3460     47689,  ficha 35 s
+'       6 mm   O2       2419     47678,  ficha 30 s
+'       8 mm   O2       2072     47690,  ficha 50 s
+'      10 mm   O2       1789     47691,  ficha 16 s
 '
 ' SOBRE LOS 2 mm:
 '   Su velocidad ajustada (3472) queda por DEBAJO de la de 3 mm (3812).
