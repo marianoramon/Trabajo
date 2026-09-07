@@ -368,3 +368,59 @@ medidos contra la tabla de la regla, igual que ya hacía con las fichas.
 
 Chapa 3000 × 1510 × 10 mm con 364,67 kg → **8050,1 kg/m³**. Cuarta comprobación
 independiente, en el cuarto espesor distinto. Cerrado del todo.
+
+
+---
+
+# 1.10: 4 mm calibrado. Sólo queda 8 mm
+
+## 47689 (Inventor) es 67844 (Lantek)
+
+Los códigos no coinciden entre sistemas, pero la geometría no deja lugar a dudas:
+
+| | 47689 (regla) | 67844 (Lantek) |
+|---|---|---|
+| Rectángulo | 788,0 × 155,1 mm | 788 × 155 mm |
+| Peso del rectángulo | 3,934 kg | 3,93 kg |
+| Peso neto | 3,733 kg | 3,73 kg |
+| Aprovechamiento | 94,9 % | 94,9 % |
+
+Con la ficha de 35 s, la velocidad de 4 mm pasa de 3400 (acotada) a **3460
+mm/min**, un 1,8 % de corrección. `ObtenerTiempoFichaLantek` acepta ya los dos
+códigos.
+
+## 47690 NO es 67845
+
+| | 47690 (regla) | 67845 (Lantek) | Diferencia |
+|---|---|---|---|
+| Rectángulo | 122,0 × 439,7 mm | 440 × 119 mm | +3,0 mm de ancho |
+| Peso del rectángulo | 3,454 kg | 3,37 kg | +2,5 % |
+| Peso neto | 3,067 kg | 2,98 kg | +2,9 % |
+
+El largo coincide (439,7 ≈ 440) pero el ancho difiere en 3 mm, y el peso en un
+2,9 %, cifras coherentes entre sí. **No es redondeo**: son piezas o revisiones
+distintas. La ficha de 50 s de 67845 no le aplica a 47690, así que 8 mm sigue
+sin calibrar.
+
+## Estado de la tabla
+
+| Espesor | Velocidad | Origen |
+|---|---|---|
+| 2 mm | 3472 | A02848, ficha 18 s |
+| 3 mm | 3812 | A02690, ficha 8 s |
+| 4 mm | **3460** | 47689, ficha 35 s |
+| 6 mm | 2419 | 47678, ficha 30 s |
+| 8 mm | 1900 | **acotado, único sin ficha** |
+| 10 mm | 1789 | 47691, ficha 16 s |
+
+Los cinco calibrados reproducen su ficha con desviación nula, y los cuatro
+adicionales de anidado medidos coinciden con la tabla.
+
+**El método de acotación queda validado tres veces.** Predijo 4, 6 y 10 mm con
+errores del 1,8 %, 0,8 % y 2,2 % antes de poder medirlos. Los 1900 mm/min de
+8 mm deberían andar igual de cerca.
+
+## Para cerrar los 8 mm
+
+Hace falta una pieza de 8 mm con geometría de Inventor **y** ficha de Lantek de
+la misma revisión: el IPT de 67845, o la ficha de 47690.
