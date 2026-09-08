@@ -2944,7 +2944,7 @@ Public Class ConsultaUsosPanel
             End If
 
             Dim distintos As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
-            Dim directos As Integer = 0
+            Dim conjuntosDirectos As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
             For Each pieza As String In piezas
                 Dim clave As String = RutaClave(pieza)
                 Dim nombrePieza As String = System.IO.Path.GetFileName(pieza)
@@ -2969,7 +2969,7 @@ Public Class ConsultaUsosPanel
                     Dim uso As String = "Nivel " & nivel.ToString()
                     If nivel = 1 Then
                         uso = "Directo"
-                        directos += 1
+                        conjuntosDirectos.Add(rutaEnsamblaje)
                     End If
                     If Not padres.ContainsKey(rutaEnsamblaje) Then
                         uso = uso & " - conjunto final"
@@ -2987,7 +2987,7 @@ Public Class ConsultaUsosPanel
                 resumenFinal = If(avisos.Count > 0, "Consulta incompleta", "Ensamblajes: 0")
             Else
                 filasFinal = filas
-                resumenFinal = "Ensamblajes: " & distintos.Count.ToString() & " (" & directos.ToString() & " directo(s))" & _
+                resumenFinal = "Ensamblajes: " & distintos.Count.ToString() & " (" & conjuntosDirectos.Count.ToString() & " directo(s))" & _
                     If(avisos.Count > 0, " - consulta parcial", "") & _
                     " | Doble clic: abrir | Ctrl+C: copiar ruta"
             End If
