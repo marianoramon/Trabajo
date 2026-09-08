@@ -2784,10 +2784,13 @@ Public Class ConsultaUsosPanel
                 If Not System.IO.File.Exists(ruta) Then Throw New System.Exception("el fichero ya no esta en esa ruta")
                 Dim abierto As Inventor.Document = Nothing
                 For Each doc As Inventor.Document In appInventor.Documents
-                    If String.Equals(doc.FullFileName, ruta, System.StringComparison.OrdinalIgnoreCase) Then
-                        abierto = doc
-                        Exit For
-                    End If
+                    Try
+                        If String.Equals(doc.FullFileName, ruta, System.StringComparison.OrdinalIgnoreCase) Then
+                            abierto = doc
+                            Exit For
+                        End If
+                    Catch
+                    End Try
                 Next
                 If abierto IsNot Nothing Then
                     abierto.Activate()
@@ -2951,27 +2954,30 @@ Public Class ConsultaUsosPanel
                     filas.Add(New String() {nombrePieza, "No se usa en ningun ensamblaje del indice", "", ""})
                     Continue For
                 End If
-                ' Orden: primero los usos directos y, dentro de cada nivel, por nombre.
-                Dim ordenadas As New System.Collections.Generic.List(Of String())
+                ' Orden: primero los usos directos y, dentro de cada nivel, por ruta.
+                ' Se ordena una lista de claves "nivel|ruta" para no usar lambdas,
+                ' que el compilador de iLogic no admite dentro de esta clase.
+                Dim ordenadas As New System.Collections.Generic.List(Of String)
                 For Each ruta As String In niveles.Keys
-                    ordenadas.Add(New String() { _
-                        niveles(ruta).ToString("D3") & "|" & System.IO.Path.GetFileName(ruta).ToLowerInvariant(), _
-                        ruta, niveles(ruta).ToString()})
+                    ordenadas.Add(niveles(ruta).ToString("D3") & "|" & ruta)
                 Next
-                ordenadas.Sort(Function(a As String(), b As String()) String.Compare(a(0), b(0), True))
-                For Each fila As String() In ordenadas
-                    Dim ruta As String = fila(1)
-                    Dim nivel As Integer = System.Convert.ToInt32(fila(2))
-                    Dim uso As String
+                ordenadas.Sort()
+                For Each entrada As String In ordenadas
+                    Dim corte As Integer = entrada.IndexOf("|")
+                    Dim nivel As Integer = System.Convert.ToInt32(entrada.Substring(0, corte))
+                    Dim rutaEnsamblaje As String = entrada.Substring(corte + 1)
+                    Dim uso As String = "Nivel " & nivel.ToString()
                     If nivel = 1 Then
                         uso = "Directo"
                         directos += 1
-                    Else
-                        uso = "Nivel " & nivel.ToString()
                     End If
-                    If Not padres.ContainsKey(ruta) OrElse padres(ruta).Count = 0 Then uso &= " - conjunto final"
-                    filas.Add(New String() {nombrePieza, System.IO.Path.GetFileName(ruta), uso, ruta})
-                    distintos.Add(ruta)
+                    If Not padres.ContainsKey(rutaEnsamblaje) Then
+                        uso = uso & " - conjunto final"
+                    ElseIf padres(rutaEnsamblaje).Count = 0 Then
+                        uso = uso & " - conjunto final"
+                    End If
+                    filas.Add(New String() {nombrePieza, System.IO.Path.GetFileName(rutaEnsamblaje), uso, rutaEnsamblaje})
+                    distintos.Add(rutaEnsamblaje)
                 Next
             Next
 
@@ -2997,21 +3003,31 @@ Public Class ConsultaUsosPanel
 
     ' Recorre el mapa inverso hacia arriba y guarda el nivel mas corto en el que
     ' cada ensamblaje contiene la pieza: 1 = la monta directamente.
+    ' Recorrido por anchura con dos listas paralelas (ruta y nivel) para no usar
+    ' colas de arrays ni Continue While dentro de la regla iLogic.
     Private Shared Function ObtenerAncestrosConNivel(clave As String, padres As System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))) As System.Collections.Generic.Dictionary(Of String, Integer)
         Dim niveles As New System.Collections.Generic.Dictionary(Of String, Integer)(System.StringComparer.OrdinalIgnoreCase)
-        Dim cola As New System.Collections.Generic.Queue(Of String())
-        cola.Enqueue(New String() {clave, "0"})
-        While cola.Count > 0
-            Dim actual As String() = cola.Dequeue()
-            If Not padres.ContainsKey(actual(0)) Then Continue While
-            Dim nivel As Integer = System.Convert.ToInt32(actual(1)) + 1
-            For Each superior As String In padres(actual(0))
-                If String.Equals(superior, clave, System.StringComparison.OrdinalIgnoreCase) Then Continue For
-                If niveles.ContainsKey(superior) Then Continue For
-                niveles(superior) = nivel
-                cola.Enqueue(New String() {superior, nivel.ToString()})
-            Next
-        End While
+        Dim rutas As New System.Collections.Generic.List(Of String)
+        Dim alturas As New System.Collections.Generic.List(Of Integer)
+        rutas.Add(clave)
+        alturas.Add(0)
+        Dim indice As Integer = 0
+        Do While indice < rutas.Count
+            Dim actual As String = rutas(indice)
+            Dim nivel As Integer = alturas(indice) + 1
+            indice += 1
+            If padres.ContainsKey(actual) Then
+                For Each superior As String In padres(actual)
+                    If Not String.Equals(superior, clave, System.StringComparison.OrdinalIgnoreCase) Then
+                        If Not niveles.ContainsKey(superior) Then
+                            niveles(superior) = nivel
+                            rutas.Add(superior)
+                            alturas.Add(nivel)
+                        End If
+                    End If
+                Next
+            End If
+        Loop
         Return niveles
     End Function
 End Class
