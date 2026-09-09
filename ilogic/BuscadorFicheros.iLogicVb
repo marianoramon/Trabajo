@@ -291,9 +291,20 @@ Public Class BuscadorFicherosForm
         If relojProcesoRelaciones IsNot Nothing Then relojProcesoRelaciones.Stop() : relojProcesoRelaciones.Dispose()
         If relojOcultarProgreso IsNot Nothing Then relojOcultarProgreso.Stop() : relojOcultarProgreso.Dispose()
         If procesoRelaciones IsNot Nothing Then
+            ' Sin esperar aqui, al reabrir el buscador se perderia la referencia y
+            ' se lanzaria un segundo proceso escribiendo el mismo fichero .usos.
+            Try
+                procesoRelaciones.WaitForExit(3000)
+            Catch
+            End Try
+            Try
+                If Not procesoRelaciones.HasExited Then procesoRelaciones.Kill()
+            Catch
+            End Try
             Try : procesoRelaciones.Dispose() : Catch : End Try
             procesoRelaciones = Nothing
         End If
+        LimpiarArchivosTemporalesRelaciones()
     End Sub
 
     Private oApp As Inventor.Application
@@ -383,6 +394,10 @@ Public Class BuscadorFicherosForm
     ' Reloj que retrasa la busqueda automatica mientras el usuario teclea.
     Private relojBusqueda As System.Windows.Forms.Timer
 
+    ' True solo cuando la busqueda la ha pedido el usuario (boton o Intro).
+    ' La busqueda automatica al teclear nunca debe robar el foco del cuadro.
+    Private _focoTrasResultados As Boolean = False
+
     ' Tema visual elegido por el usuario: Sistema, Normal u Oscuro.
     Private _temaSeleccionado As String = "Oscuro"
 
@@ -415,9 +430,28 @@ Public Class BuscadorFicherosForm
     ' que se cablean por cuatro vias distintas. Ninguna es imprescindible: la
     ' busqueda se lanza sola al teclear y la ventana se cierra con el boton X.
 
+    ' Con un desplegable abierto, Escape debe cerrar el desplegable, no la ventana.
+    Private Function DesplegableAbierto() As Boolean
+        Try
+            Dim combo As System.Windows.Forms.ComboBox = _
+                TryCast(Me.ActiveControl, System.Windows.Forms.ComboBox)
+            Return combo IsNot Nothing AndAlso combo.DroppedDown
+        Catch
+            Return False
+        End Try
+    End Function
+
     Protected Overrides Function ProcessCmdKey(ByRef msg As System.Windows.Forms.Message, _
             keyData As System.Windows.Forms.Keys) As Boolean
+        If keyData <> System.Windows.Forms.Keys.Escape AndAlso _
+                keyData <> System.Windows.Forms.Keys.Enter AndAlso _
+                keyData <> System.Windows.Forms.Keys.Return Then
+            Return MyBase.ProcessCmdKey(msg, keyData)
+        End If
         Dim tecla As System.Windows.Forms.Keys = keyData And System.Windows.Forms.Keys.KeyCode
+        If tecla = System.Windows.Forms.Keys.Escape AndAlso DesplegableAbierto() Then
+            Return MyBase.ProcessCmdKey(msg, keyData)
+        End If
         If tecla = System.Windows.Forms.Keys.Escape Then
             CerrarBuscador()
             Return True
@@ -451,8 +485,10 @@ Public Class BuscadorFicherosForm
         Const WM_KEYDOWN As Integer = &H100
         If mensaje.Msg <> WM_KEYDOWN Then Return False
         If Not Me.Visible OrElse Me.IsDisposed Then Return False
+        If System.Windows.Forms.Control.ModifierKeys <> System.Windows.Forms.Keys.None Then Return False
         Dim codigo As Long = mensaje.WParam.ToInt64()
         If codigo = CLng(System.Windows.Forms.Keys.Escape) Then
+            If DesplegableAbierto() Then Return False
             If Me.ContainsFocus Then
                 CerrarBuscador()
                 Return True
@@ -516,6 +552,16 @@ Public Class BuscadorFicherosForm
         If relojBusqueda IsNot Nothing Then relojBusqueda.Stop()
     End Sub
 
+    Private Sub LiberarRelojBusqueda()
+        If relojBusqueda Is Nothing Then Return
+        Try
+            relojBusqueda.Stop()
+            relojBusqueda.Dispose()
+        Catch
+        End Try
+        relojBusqueda = Nothing
+    End Sub
+
     Private Sub OnCodigoTextChanged(sender As Object, e As System.EventArgs)
         If btnLimpiar IsNot Nothing Then btnLimpiar.Visible = (txtCodigo.Text.Length > 0)
         If relojBusqueda Is Nothing Then
@@ -524,15 +570,19 @@ Public Class BuscadorFicherosForm
             AddHandler relojBusqueda.Tick, AddressOf OnBusquedaAutomatica
         End If
         relojBusqueda.Stop()
+        If IndexandoAhora() Then Return
         If txtCodigo.Text.Trim().Length >= MINIMO_BUSQUEDA Then relojBusqueda.Start()
     End Sub
 
     Private Sub OnBusquedaAutomatica(sender As Object, e As System.EventArgs)
         relojBusqueda.Stop()
+        If Me.IsDisposed OrElse cerradoDatos Then Return
+        If IndexandoAhora() Then Return
         Dim codigo As String = txtCodigo.Text.Trim()
         If codigo.Length < MINIMO_BUSQUEDA Then Return
         If String.Equals(codigo, _codigoBusquedaActual, System.StringComparison.OrdinalIgnoreCase) Then Return
         If Not btnBuscar.Enabled Then Return
+        _focoTrasResultados = False
         If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice())
         PedirDatos(codigo)
     End Sub
@@ -569,6 +619,13 @@ Public Class BuscadorFicherosForm
 
     Private Sub OnCabeceraDobleClic(sender As Object, e As System.Windows.Forms.MouseEventArgs)
         AlternarMaximizado()
+    End Sub
+
+    ' MinimumSize necesitaria un Size de System.Drawing, asi que se limita a mano.
+    Private Sub OnLimitarTamano(sender As Object, e As System.EventArgs)
+        If Me.WindowState <> System.Windows.Forms.FormWindowState.Normal Then Return
+        If Me.Width < 980 Then Me.Width = 980
+        If Me.Height < 560 Then Me.Height = 560
     End Sub
 
     Private Sub OnMinimizarVentana(sender As Object, e As System.EventArgs)
@@ -621,6 +678,7 @@ Public Class BuscadorFicherosForm
         AddHandler Me.Shown, AddressOf OnFormularioShown
         AddHandler Me.Activated, AddressOf OnFormularioActivated
         AddHandler Me.KeyDown, AddressOf OnFormularioKeyDown
+        AddHandler Me.Resize, AddressOf OnLimitarTamano
         AddHandler txtIndice.Validated, AddressOf OnIndiceValidado
 
         Me.AcceptButton = btnBuscar
@@ -655,10 +713,10 @@ Public Class BuscadorFicherosForm
     End Function
 
     Private Function Tarjeta(x As Integer, y As Integer, w As Integer, h As Integer, _
-            etiqueta As String, anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Panel
+            marca As String, anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Panel
         Dim p As New System.Windows.Forms.Panel()
         p.Left = x : p.Top = y : p.Width = w : p.Height = h
-        p.Tag = etiqueta : p.Anchor = anclaje
+        p.Tag = marca : p.Anchor = anclaje
         Return p
     End Function
 
@@ -726,10 +784,10 @@ Public Class BuscadorFicherosForm
         Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
             System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
 
-        Dim tarjeta As System.Windows.Forms.Panel = Tarjeta(24, 56, 1272, 64, "TARJETA", anclaBarra)
-        tarjeta.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        Dim panelIndice As System.Windows.Forms.Panel = Tarjeta(24, 56, 1272, 64, "TARJETA", anclaBarra)
+        panelIndice.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
 
-        tarjeta.Controls.Add(EtiquetaTenue("UNIDAD", 14, 9, 70))
+        panelIndice.Controls.Add(EtiquetaTenue("UNIDAD", 14, 9, 70))
         cboUnidad = New System.Windows.Forms.ComboBox()
         cboUnidad.Left = 14 : cboUnidad.Top = 27 : cboUnidad.Width = 120
         cboUnidad.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
@@ -741,44 +799,44 @@ Public Class BuscadorFicherosForm
         Catch
         End Try
         AddHandler cboUnidad.SelectedIndexChanged, AddressOf OnUnidadChanged
-        tarjeta.Controls.Add(cboUnidad)
+        panelIndice.Controls.Add(cboUnidad)
 
-        tarjeta.Controls.Add(EtiquetaTenue("CARPETA A INDEXAR", 148, 9, 160))
+        panelIndice.Controls.Add(EtiquetaTenue("CARPETA A INDEXAR", 148, 9, 160))
         txtRuta = New System.Windows.Forms.TextBox()
         txtRuta.Left = 148 : txtRuta.Top = 27 : txtRuta.Width = 300 : txtRuta.Anchor = anclaIzquierda
-        tarjeta.Controls.Add(txtRuta)
+        panelIndice.Controls.Add(txtRuta)
         btnExaminar = Boton("...", 452, 26, 34, 22, anclaIzquierda)
         AddHandler btnExaminar.Click, AddressOf OnExaminarRuta
-        tarjeta.Controls.Add(btnExaminar)
+        panelIndice.Controls.Add(btnExaminar)
 
-        tarjeta.Controls.Add(EtiquetaTenue("CARPETA DEL INDICE", 500, 9, 160))
+        panelIndice.Controls.Add(EtiquetaTenue("CARPETA DEL INDICE", 500, 9, 160))
         txtIndice = New System.Windows.Forms.TextBox()
         txtIndice.Left = 500 : txtIndice.Top = 27 : txtIndice.Width = 320 : txtIndice.Anchor = anclaIzquierda
         AddHandler txtIndice.TextChanged, AddressOf OnIndiceCarpetaChanged
-        tarjeta.Controls.Add(txtIndice)
+        panelIndice.Controls.Add(txtIndice)
         btnExaminarIndice = Boton("...", 824, 26, 34, 22, anclaIzquierda)
         AddHandler btnExaminarIndice.Click, AddressOf OnExaminarIndice
-        tarjeta.Controls.Add(btnExaminarIndice)
+        panelIndice.Controls.Add(btnExaminarIndice)
 
         lblIndiceInfo = EtiquetaTenue("", 872, 9, 210)
-        tarjeta.Controls.Add(lblIndiceInfo)
+        panelIndice.Controls.Add(lblIndiceInfo)
 
         chkPartNumber = New System.Windows.Forms.CheckBox()
         chkPartNumber.Text = "Metadatos de iProperties"
         chkPartNumber.Left = 872 : chkPartNumber.Top = 26 : chkPartNumber.Width = 200
         chkPartNumber.Checked = False
         chkPartNumber.Enabled = False
-        tarjeta.Controls.Add(chkPartNumber)
+        panelIndice.Controls.Add(chkPartNumber)
 
         btnIndexar = Boton("Reindexar", 1090, 25, 85, 26, anclaDerecha)
         AddHandler btnIndexar.Click, AddressOf OnIndexar
-        tarjeta.Controls.Add(btnIndexar)
+        panelIndice.Controls.Add(btnIndexar)
 
         btnActualizar = Boton("Actualizar", 1181, 25, 85, 26, anclaDerecha)
         AddHandler btnActualizar.Click, AddressOf OnActualizar
-        tarjeta.Controls.Add(btnActualizar)
+        panelIndice.Controls.Add(btnActualizar)
 
-        Me.Controls.Add(tarjeta)
+        Me.Controls.Add(panelIndice)
     End Sub
 
     Private Sub CrearCajaBusqueda()
@@ -1154,6 +1212,12 @@ Public Class BuscadorFicherosForm
         ActualizarEstadoMenuContextual()
     End Sub
 
+    ' Solo el hilo que reescribe los indices. El proceso de relaciones corre
+    ' aparte y no impide buscar.
+    Private Function IndexandoAhora() As Boolean
+        Return hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive
+    End Function
+
     Private Function HayIndexacionActiva() As Boolean
         Return (hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive) OrElse ProcesoRelacionesActivo()
     End Function
@@ -1293,7 +1357,7 @@ Public Class BuscadorFicherosForm
         Catch
         End Try
         cancelar = True
-        DetenerRelojBusqueda()
+        LiberarRelojBusqueda()
         If panelUsos IsNot Nothing Then panelUsos.PrepararCierre()
         GuardarAjustes()
         CerrarProcesoRelaciones()
@@ -1532,11 +1596,11 @@ Public Class BuscadorFicherosForm
         Dim padre As System.Windows.Forms.Control = control.Parent
         While padre IsNot Nothing
             If TypeOf padre Is ConsultaUsosPanel Then Return _cTarjeta
-            Dim etiqueta As String = ""
-            If padre.Tag IsNot Nothing Then etiqueta = System.Convert.ToString(padre.Tag)
-            If etiqueta = "CABECERA" OrElse etiqueta = "ESTADO" Then Return _cCabecera
-            If etiqueta = "ACCIONES" Then Return _cAcciones
-            If etiqueta = "TARJETA" OrElse etiqueta = "BUSQUEDA" Then Return _cTarjeta
+            Dim marca As String = ""
+            If padre.Tag IsNot Nothing Then marca = System.Convert.ToString(padre.Tag)
+            If marca = "CABECERA" OrElse marca = "ESTADO" Then Return _cCabecera
+            If marca = "ACCIONES" Then Return _cAcciones
+            If marca = "TARJETA" OrElse marca = "BUSQUEDA" Then Return _cTarjeta
             padre = padre.Parent
         End While
         Return _cFondo
@@ -1562,8 +1626,8 @@ Public Class BuscadorFicherosForm
     Private Sub AplicarTemaAControl(control As System.Windows.Forms.Control, oscuro As Boolean)
         If control Is Nothing Then Return
 
-        Dim etiqueta As String = ""
-        If control.Tag IsNot Nothing Then etiqueta = System.Convert.ToString(control.Tag)
+        Dim marca As String = ""
+        If control.Tag IsNot Nothing Then marca = System.Convert.ToString(control.Tag)
 
         If TypeOf control Is System.Windows.Forms.TextBox Then
             Dim caja As System.Windows.Forms.TextBox = _
@@ -1586,38 +1650,38 @@ Public Class BuscadorFicherosForm
             AsignarColor(lista, "ForeColor", _cTexto)
 
         ElseIf TypeOf control Is System.Windows.Forms.Button Then
-            Dim boton As System.Windows.Forms.Button = _
+            Dim pulsador As System.Windows.Forms.Button = _
                 DirectCast(control, System.Windows.Forms.Button)
-            boton.UseVisualStyleBackColor = False
-            boton.FlatStyle = System.Windows.Forms.FlatStyle.Flat
-            boton.FlatAppearance.BorderSize = 1
+            pulsador.UseVisualStyleBackColor = False
+            pulsador.FlatStyle = System.Windows.Forms.FlatStyle.Flat
+            pulsador.FlatAppearance.BorderSize = 1
 
-            If etiqueta = "ACENTO" Then
-                AsignarColor(boton, "BackColor", _cAcento)
-                AsignarColor(boton, "ForeColor", _cTextoAcento)
-                AsignarColor(boton.FlatAppearance, "BorderColor", _cAcento)
-                AsignarColor(boton.FlatAppearance, "MouseOverBackColor", CrearColor(232, 178, 70))
+            If marca = "ACENTO" Then
+                AsignarColor(pulsador, "BackColor", _cAcento)
+                AsignarColor(pulsador, "ForeColor", _cTextoAcento)
+                AsignarColor(pulsador.FlatAppearance, "BorderColor", _cAcento)
+                AsignarColor(pulsador.FlatAppearance, "MouseOverBackColor", CrearColor(232, 178, 70))
             Else
-                AsignarColor(boton, "BackColor", _cBoton)
-                AsignarColor(boton, "ForeColor", _cTexto)
-                AsignarColor(boton.FlatAppearance, "BorderColor", _cBorde)
-                If etiqueta = "CERRAR" Then
-                    AsignarColor(boton.FlatAppearance, "MouseOverBackColor", _cCerrar)
+                AsignarColor(pulsador, "BackColor", _cBoton)
+                AsignarColor(pulsador, "ForeColor", _cTexto)
+                AsignarColor(pulsador.FlatAppearance, "BorderColor", _cBorde)
+                If marca = "CERRAR" Then
+                    AsignarColor(pulsador.FlatAppearance, "MouseOverBackColor", _cCerrar)
                 ElseIf oscuro Then
-                    AsignarColor(boton.FlatAppearance, "MouseOverBackColor", CrearColor(67, 91, 113))
-                    AsignarColor(boton.FlatAppearance, "MouseDownBackColor", CrearColor(51, 110, 144))
+                    AsignarColor(pulsador.FlatAppearance, "MouseOverBackColor", CrearColor(67, 91, 113))
+                    AsignarColor(pulsador.FlatAppearance, "MouseDownBackColor", CrearColor(51, 110, 144))
                 End If
             End If
 
         ElseIf TypeOf control Is System.Windows.Forms.Label _
                 OrElse TypeOf control Is System.Windows.Forms.RadioButton _
                 OrElse TypeOf control Is System.Windows.Forms.CheckBox Then
-            If etiqueta = "PILDORA" Then
+            If marca = "PILDORA" Then
                 AsignarColor(control, "BackColor", _cEntrada)
                 AsignarColor(control, "ForeColor", _cTenue)
             Else
                 AsignarColor(control, "BackColor", FondoDeContenedor(control))
-                AsignarColor(control, "ForeColor", If(etiqueta = "TENUE", _cTenue, _cTexto))
+                AsignarColor(control, "ForeColor", If(marca = "TENUE", _cTenue, _cTexto))
             End If
 
         ElseIf TypeOf control Is System.Windows.Forms.ProgressBar Then
@@ -1630,8 +1694,8 @@ Public Class BuscadorFicherosForm
 
         ElseIf TypeOf control Is System.Windows.Forms.Panel Then
             Dim fondo As Object = _cTarjeta
-            If etiqueta = "CABECERA" OrElse etiqueta = "ESTADO" Then fondo = _cCabecera
-            If etiqueta = "ACCIONES" Then fondo = _cAcciones
+            If marca = "CABECERA" OrElse marca = "ESTADO" Then fondo = _cCabecera
+            If marca = "ACCIONES" Then fondo = _cAcciones
             AsignarColor(control, "BackColor", fondo)
             AsignarColor(control, "ForeColor", _cTexto)
 
@@ -1739,7 +1803,8 @@ Public Class BuscadorFicherosForm
         _nPlanos = 0
         _errorTrabajo = ""
 
-        Dim viejo = CargarIndiceDiccionario(archivo)
+        Dim viejo As System.Collections.Generic.Dictionary(Of String, String()) = _
+            CargarIndiceDiccionario(archivo)
         Dim archivoTemporal As String = archivo & ".tmp"
 
         Try
@@ -1778,11 +1843,9 @@ Public Class BuscadorFicherosForm
             End Try
         End Try
 
-        _indice = Nothing
-        _indiceFirma = ""
-        _resultadosBusqueda = Nothing
-        _codigoBusquedaActual = ""
-
+        ' El vaciado de las cacheras se hace en FinIndexado, que corre en el hilo
+        ' de la interfaz. Hacerlo aqui puede dejar a media lectura al hilo que
+        ' dibuja los resultados.
         Try
             If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
                 Me.BeginInvoke(New System.Action(AddressOf FinIndexado))
@@ -1923,6 +1986,12 @@ Public Class BuscadorFicherosForm
     End Function
 
     Private Sub FinIndexado()
+        _indice = Nothing
+        _indiceFirma = ""
+        _resultadosBusqueda = Nothing
+        _codigoBusquedaActual = ""
+        cacheCarpeta = ""
+
         btnBuscar.Enabled = True
         HabilitarAccionesResultados(True)
         ActualizarInfoIndice()
@@ -2144,7 +2213,9 @@ Public Class BuscadorFicherosForm
         Dim solicitud As New ResultadoCarga()
         solicitud.Carpeta = carpetaPendiente : solicitud.Codigo = codigoPendiente : solicitud.Version = versionDatos
         If String.Equals(cacheCarpeta, solicitud.Carpeta, System.StringComparison.OrdinalIgnoreCase) AndAlso _indice IsNot Nothing Then
-            solicitud.Indice = _indice
+            ' Copia superficial: el hilo de interfaz puede quitar entradas de
+            ' _indice mientras el hilo de busqueda la esta recorriendo.
+            solicitud.Indice = New System.Collections.Generic.List(Of String())(_indice)
             solicitud.Archivos = cacheArchivos : solicitud.Avisos = cacheAvisos
         End If
         Dim hilo As New System.Threading.Thread(Sub() LeerYBuscarDatos(solicitud))
@@ -2191,7 +2262,7 @@ Public Class BuscadorFicherosForm
                         If solicitud.Coincidencias.Count >= MAX_RESULTADOS Then solicitud.Truncado = True : Exit For
                     End If
                 Next
-                solicitud.Coincidencias.Sort(Function(a, b) CLng(b(3)).CompareTo(CLng(a(3))))
+                solicitud.Coincidencias.Sort(Function(a As String(), b As String()) CLng(b(3)).CompareTo(CLng(a(3))))
             End If
         Catch ex As System.Exception
             solicitud.ErrorLectura = "No se pudieron leer los indices: " & ex.Message
@@ -2210,6 +2281,7 @@ Public Class BuscadorFicherosForm
 
     Private Sub OnBuscar(sender As Object, e As System.EventArgs)
         DetenerRelojBusqueda()
+        _focoTrasResultados = True
         Dim codigo As String = txtCodigo.Text.Trim()
         If codigo = "" Then
             lblEstado.Text = "Escribe un codigo para buscar."
@@ -2268,10 +2340,11 @@ Public Class BuscadorFicherosForm
 
         If lstResultados.Items.Count > 0 Then
             lstResultados.Items(0).Selected = True
-            lstResultados.Select()
+            If _focoTrasResultados Then lstResultados.Select()
         Else
             ActualizarSeleccion()
         End If
+        _focoTrasResultados = False
     End Sub
 
     Private Function CrearItemResultado(entrada As String()) As System.Windows.Forms.ListViewItem
