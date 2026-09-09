@@ -1,8 +1,8 @@
 ﻿' =====================================================================
-'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.8
+'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.9
 ' =====================================================================
 '
-'  Cambios v7.8:
+'  Cambios v7.9:
 '    - La busqueda se lanza sola al teclear (350 ms). Ya no depende de Intro,
 '      que Inventor se traga en formularios no modales.
 '    - Cabecera propia con botones Minimizar, Maximizar y Cerrar. Cerrar ya no
@@ -661,7 +661,7 @@ Public Class BuscadorFicherosForm
 
     ' ================= INTERFAZ =================
     Private Sub InicializarComponentes()
-        Me.Text = "Buscador CAD - Indice de busqueda v7.8"
+        Me.Text = "Buscador CAD - Indice de busqueda v7.9"
         ' El borde va PRIMERO: al cambiarlo despues, WinForms conserva el area
         ' cliente y la ventana se queda ~39 px mas corta, cortando las barras
         ' de abajo.
@@ -760,7 +760,7 @@ Public Class BuscadorFicherosForm
         AddHandler lblTitulo.MouseDown, AddressOf OnArrastrarVentana
         cabecera.Controls.Add(lblTitulo)
 
-        cabecera.Controls.Add(EtiquetaTenue("v7.8", 182, 16, 40))
+        cabecera.Controls.Add(EtiquetaTenue("v7.9", 182, 16, 40))
 
         lblSincronizado = Etiqueta("   Indice sincronizado", 232, 10, 210)
         lblSincronizado.Height = 24
@@ -913,10 +913,49 @@ Public Class BuscadorFicherosForm
         Me.Controls.Add(lblResultados)
     End Sub
 
+    ' Etiqueta de cabecera de tabla: texto oscuro sobre ambar y clic para
+    ' ordenar. El indice de columna viaja en Name porque Tag lo usa el tema.
+    Private Function EtiquetaColumna(texto As String, columna As Integer, _
+            x As Integer, w As Integer, _
+            anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Label
+        Dim l As New System.Windows.Forms.Label()
+        l.Text = texto : l.Left = x : l.Top = 7 : l.Width = w
+        l.Tag = "TEXTOACENTO" : l.Name = "COL" & columna.ToString()
+        l.Anchor = anclaje
+        l.Cursor = System.Windows.Forms.Cursors.Hand
+        AddHandler l.Click, AddressOf OnCabeceraTablaClic
+        Return l
+    End Function
+
+    Private Sub OnCabeceraTablaClic(sender As Object, e As System.EventArgs)
+        Dim rotulo As System.Windows.Forms.Label = _
+            TryCast(sender, System.Windows.Forms.Label)
+        If rotulo Is Nothing Then Return
+        Dim columna As Integer = 0
+        If Not Integer.TryParse(rotulo.Name.Replace("COL", ""), columna) Then Return
+        OrdenarPorColumna(columna)
+    End Sub
+
     Private Sub CrearListaResultados()
+        Dim anclaCabecera As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Dim anclaFija As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left
+
+        ' La cabecera del sistema no admite color, asi que se oculta y se pone
+        ' esta encima, hecha con controles normales que si sabemos pintar.
+        Dim cabeceraTabla As System.Windows.Forms.Panel = _
+            Tarjeta(24, 212, 856, 26, "CABTABLA", anclaCabecera)
+        cabeceraTabla.Controls.Add(EtiquetaColumna("CODIGO Y NOMBRE DEL FICHERO", 0, 6, 350, anclaFija))
+        cabeceraTabla.Controls.Add(EtiquetaColumna("FORMATO", 1, 366, 74, anclaFija))
+        cabeceraTabla.Controls.Add(EtiquetaColumna("MODIFICADO", 2, 446, 124, anclaFija))
+        cabeceraTabla.Controls.Add(EtiquetaColumna("RUTA COMPARTIDA", 3, 576, 260, anclaFija))
+        Me.Controls.Add(cabeceraTabla)
+
         lstResultados = New System.Windows.Forms.ListView()
-        lstResultados.Left = 24 : lstResultados.Top = 212
-        lstResultados.Width = 856 : lstResultados.Height = 380
+        lstResultados.Left = 24 : lstResultados.Top = 238
+        lstResultados.Width = 856 : lstResultados.Height = 354
         lstResultados.View = System.Windows.Forms.View.Details
         lstResultados.FullRowSelect = True
         lstResultados.MultiSelect = True
@@ -935,10 +974,7 @@ Public Class BuscadorFicherosForm
         AddHandler lstResultados.KeyDown, AddressOf OnResultadosKeyDown
         AddHandler lstResultados.SelectedIndexChanged, AddressOf OnSeleccionResultadosChanged
         AddHandler lstResultados.MouseDown, AddressOf OnResultadosMouseDown
-        lstResultados.OwnerDraw = True
-        AddHandler lstResultados.DrawColumnHeader, AddressOf OnDibujarCabecera
-        AddHandler lstResultados.DrawItem, AddressOf OnDibujarFila
-        AddHandler lstResultados.DrawSubItem, AddressOf OnDibujarSubFila
+        lstResultados.HeaderStyle = System.Windows.Forms.ColumnHeaderStyle.None
         CrearMenuContextualResultados()
         Me.Controls.Add(lstResultados)
     End Sub
@@ -1548,19 +1584,6 @@ Public Class BuscadorFicherosForm
         End Try
     End Function
 
-    ' Pincel solido creado por reflexion, para no referenciar System.Drawing.
-    Private Function CrearBrocha(color As Object) As Object
-        Try
-            If color Is Nothing Then Return Nothing
-            Dim tipo As System.Type = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing.Common")
-            If tipo Is Nothing Then tipo = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing")
-            If tipo Is Nothing Then Return Nothing
-            Return System.Activator.CreateInstance(tipo, New Object() {color})
-        Catch
-            Return Nothing
-        End Try
-    End Function
-
     Private Sub AsignarColor(objeto As Object, nombrePropiedad As String, color As Object)
         If objeto Is Nothing OrElse color Is Nothing Then Return
         Try
@@ -1613,7 +1636,9 @@ Public Class BuscadorFicherosForm
 
     Private Sub AplicarFuenteATenues(control As System.Windows.Forms.Control, fuente As Object)
         If control Is Nothing OrElse fuente Is Nothing Then Return
-        If control.Tag IsNot Nothing AndAlso System.Convert.ToString(control.Tag) = "TENUE" Then
+        Dim marcaControl As String = ""
+        If control.Tag IsNot Nothing Then marcaControl = System.Convert.ToString(control.Tag)
+        If marcaControl = "TENUE" OrElse marcaControl = "TEXTOACENTO" Then
             AsignarColor(control, "Font", fuente)
         End If
         For Each hijo As System.Windows.Forms.Control In control.Controls
@@ -1700,9 +1725,12 @@ Public Class BuscadorFicherosForm
     Private Function FondoDeContenedor(control As System.Windows.Forms.Control) As Object
         Dim padre As System.Windows.Forms.Control = control.Parent
         While padre IsNot Nothing
-            If TypeOf padre Is ConsultaUsosPanel Then Return _cTarjeta
+            ' La marca se mira antes que el tipo: una cabecera dentro del panel
+            ' de usos debe salir ambar, no del color de la tarjeta.
             Dim marca As String = ""
             If padre.Tag IsNot Nothing Then marca = System.Convert.ToString(padre.Tag)
+            If marca = "CABTABLA" Then Return _cAcento
+            If TypeOf padre Is ConsultaUsosPanel Then Return _cTarjeta
             If marca = "CAMPO" Then Return _cEntrada
             If marca = "CABECERA" OrElse marca = "ESTADO" Then Return _cCabecera
             If marca = "ACCIONES" Then Return _cAcciones
@@ -1789,6 +1817,9 @@ Public Class BuscadorFicherosForm
             If marca = "PILDORA" Then
                 AsignarColor(control, "BackColor", _cEntrada)
                 AsignarColor(control, "ForeColor", _cTenue)
+            ElseIf marca = "TEXTOACENTO" Then
+                AsignarColor(control, "BackColor", _cAcento)
+                AsignarColor(control, "ForeColor", _cTextoAcento)
             Else
                 AsignarColor(control, "BackColor", FondoDeContenedor(control))
                 AsignarColor(control, "ForeColor", If(marca = "TENUE", _cTenue, _cTexto))
@@ -1804,6 +1835,7 @@ Public Class BuscadorFicherosForm
 
         ElseIf TypeOf control Is System.Windows.Forms.Panel Then
             Dim fondo As Object = _cTarjeta
+            If marca = "CABTABLA" Then fondo = _cAcento
             If marca = "CAMPO" Then fondo = _cEntrada
             If marca = "CABECERA" OrElse marca = "ESTADO" Then fondo = _cCabecera
             If marca = "ACCIONES" Then fondo = _cAcciones
@@ -2722,43 +2754,15 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    ' Windows dibuja las cabeceras de un ListView y no hace caso a BackColor ni
-    ' ForeColor: la unica forma de darles color es dibujarlas nosotros. Si algo
-    ' falla se cae a la cabecera del sistema, nunca se rompe.
-    Public Sub OnDibujarCabecera(sender As Object, _
-            e As System.Windows.Forms.DrawListViewColumnHeaderEventArgs)
-        Try
-            Dim brochaFondo As Object = CrearBrocha(_cAcento)
-            Dim brochaTexto As Object = CrearBrocha(_cTextoAcento)
-            If brochaFondo Is Nothing OrElse brochaTexto Is Nothing Then
-                e.DrawDefault = True
-                Return
-            End If
-            e.Graphics.FillRectangle(brochaFondo, e.Bounds)
-            e.Graphics.DrawString(e.Header.Text, e.Font, brochaTexto, _
-                CSng(e.Bounds.X + 6), CSng(e.Bounds.Y + 5))
-        Catch
-            e.DrawDefault = True
-        End Try
-    End Sub
-
-    ' Al activar OwnerDraw hay que atender tambien filas y subfilas, o dejan de
-    ' verse. Se delega en el dibujo normal para conservar las filas alternas.
-    Public Sub OnDibujarFila(sender As Object, _
-            e As System.Windows.Forms.DrawListViewItemEventArgs)
-        e.DrawDefault = True
-    End Sub
-
-    Public Sub OnDibujarSubFila(sender As Object, _
-            e As System.Windows.Forms.DrawListViewSubItemEventArgs)
-        e.DrawDefault = True
-    End Sub
-
     Private Sub OnColumnClick(sender As Object, e As System.Windows.Forms.ColumnClickEventArgs)
-        If e.Column = _ordenActual Then
+        OrdenarPorColumna(e.Column)
+    End Sub
+
+    Private Sub OrdenarPorColumna(columna As Integer)
+        If columna = _ordenActual Then
             _ascendente = Not _ascendente
         Else
-            _ordenActual = e.Column
+            _ordenActual = columna
             _ascendente = True
         End If
 
@@ -3614,6 +3618,8 @@ Public Class ConsultaUsosPanel
     End Class
 
     Private listaEnsamblajes As System.Windows.Forms.ListView
+    Private cabeceraUsos As System.Windows.Forms.Panel
+    Private colFichero As System.Windows.Forms.Label
     Private estado As System.Windows.Forms.Label
     Private detalle As System.Windows.Forms.Label
     Private botonAbrir As System.Windows.Forms.Button
@@ -3645,10 +3651,7 @@ Public Class ConsultaUsosPanel
         AddHandler listaEnsamblajes.DoubleClick, AddressOf AbrirEnsamblajesSeleccionados
         AddHandler listaEnsamblajes.KeyDown, AddressOf OnTeclaEnsamblajes
         AddHandler listaEnsamblajes.SelectedIndexChanged, AddressOf OnEnsamblajeSeleccionado
-        listaEnsamblajes.OwnerDraw = True
-        AddHandler listaEnsamblajes.DrawColumnHeader, AddressOf OnDibujarCabecera
-        AddHandler listaEnsamblajes.DrawItem, AddressOf OnDibujarFila
-        AddHandler listaEnsamblajes.DrawSubItem, AddressOf OnDibujarSubFila
+        listaEnsamblajes.HeaderStyle = System.Windows.Forms.ColumnHeaderStyle.None
         AddHandler Me.Resize, AddressOf AjustarListaEnsamblajes
 
         estado = New System.Windows.Forms.Label()
@@ -3672,8 +3675,29 @@ Public Class ConsultaUsosPanel
         detalle.Dock = System.Windows.Forms.DockStyle.Bottom
         detalle.Tag = "TENUE"
 
+        ' Cabecera propia, porque la del sistema no admite color. Va antes que
+        ' "estado" para que, con el acoplado inverso de WinForms, el rotulo
+        ' quede arriba del todo y esta fila justo debajo.
+        cabeceraUsos = New System.Windows.Forms.Panel()
+        cabeceraUsos.Height = 24
+        cabeceraUsos.Dock = System.Windows.Forms.DockStyle.Top
+        cabeceraUsos.Tag = "CABTABLA"
+
+        Dim colCodigo As New System.Windows.Forms.Label()
+        colCodigo.Text = "CODIGO" : colCodigo.Left = 6 : colCodigo.Top = 6 : colCodigo.Width = 120
+        colCodigo.Tag = "TEXTOACENTO"
+        cabeceraUsos.Controls.Add(colCodigo)
+
+        colFichero = New System.Windows.Forms.Label()
+        colFichero.Text = "FICHERO" : colFichero.Left = 136 : colFichero.Top = 6 : colFichero.Width = 200
+        colFichero.Tag = "TEXTOACENTO"
+        colFichero.Anchor = System.Windows.Forms.AnchorStyles.Top _
+            Or System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right
+        cabeceraUsos.Controls.Add(colFichero)
+
         ' El orden importa: primero el que rellena y despues los bordes.
         Me.Controls.Add(listaEnsamblajes)
+        Me.Controls.Add(cabeceraUsos)
         Me.Controls.Add(estado)
         Me.Controls.Add(botonAbrir)
         Me.Controls.Add(detalle)
@@ -3768,55 +3792,6 @@ Public Class ConsultaUsosPanel
             MostrarSeleccion()
         End If
         IniciarCarga()
-    End Sub
-
-    ' Mismo criterio que el formulario: cabecera ambar con texto oscuro. Esta
-    ' clase no ve la paleta del formulario, asi que la reproduce aqui.
-    Private Function CrearBrochaPanel(r As Integer, g As Integer, b As Integer) As Object
-        Try
-            Dim tipoColor As System.Type = System.Type.GetType("System.Drawing.Color, System.Drawing.Primitives")
-            If tipoColor Is Nothing Then tipoColor = System.Type.GetType("System.Drawing.Color, System.Drawing.Common")
-            If tipoColor Is Nothing Then tipoColor = System.Type.GetType("System.Drawing.Color, System.Drawing")
-            If tipoColor Is Nothing Then Return Nothing
-            Dim tipos() As System.Type = New System.Type() {GetType(Integer), GetType(Integer), GetType(Integer)}
-            Dim metodo As System.Reflection.MethodInfo = tipoColor.GetMethod("FromArgb", tipos)
-            If metodo Is Nothing Then Return Nothing
-            Dim color As Object = metodo.Invoke(Nothing, New Object() {r, g, b})
-
-            Dim tipoBrocha As System.Type = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing.Common")
-            If tipoBrocha Is Nothing Then tipoBrocha = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing")
-            If tipoBrocha Is Nothing Then Return Nothing
-            Return System.Activator.CreateInstance(tipoBrocha, New Object() {color})
-        Catch
-            Return Nothing
-        End Try
-    End Function
-
-    Public Sub OnDibujarCabecera(sender As Object, _
-            e As System.Windows.Forms.DrawListViewColumnHeaderEventArgs)
-        Try
-            Dim brochaFondo As Object = CrearBrochaPanel(214, 158, 46)
-            Dim brochaTexto As Object = CrearBrochaPanel(30, 35, 44)
-            If brochaFondo Is Nothing OrElse brochaTexto Is Nothing Then
-                e.DrawDefault = True
-                Return
-            End If
-            e.Graphics.FillRectangle(brochaFondo, e.Bounds)
-            e.Graphics.DrawString(e.Header.Text, e.Font, brochaTexto, _
-                CSng(e.Bounds.X + 6), CSng(e.Bounds.Y + 5))
-        Catch
-            e.DrawDefault = True
-        End Try
-    End Sub
-
-    Public Sub OnDibujarFila(sender As Object, _
-            e As System.Windows.Forms.DrawListViewItemEventArgs)
-        e.DrawDefault = True
-    End Sub
-
-    Public Sub OnDibujarSubFila(sender As Object, _
-            e As System.Windows.Forms.DrawListViewSubItemEventArgs)
-        e.DrawDefault = True
     End Sub
 
     Private Shared Function Clave(ruta As String, unidades As System.Collections.Generic.Dictionary(Of String, String)) As String
@@ -3916,6 +3891,7 @@ Public Class ConsultaUsosPanel
         If disponible < 160 Then Return
         listaEnsamblajes.Columns(0).Width = 130
         listaEnsamblajes.Columns(1).Width = disponible - 130
+        If colFichero IsNot Nothing Then colFichero.Width = System.Math.Max(60, disponible - 136)
     End Sub
 
     Private Sub MostrarMensaje(texto As String)
