@@ -1,8 +1,8 @@
 ﻿' =====================================================================
-'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.7
+'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.8
 ' =====================================================================
 '
-'  Cambios v7.7:
+'  Cambios v7.8:
 '    - La busqueda se lanza sola al teclear (350 ms). Ya no depende de Intro,
 '      que Inventor se traga en formularios no modales.
 '    - Cabecera propia con botones Minimizar, Maximizar y Cerrar. Cerrar ya no
@@ -321,7 +321,10 @@ Public Class BuscadorFicherosForm
     ' --- Controles del indice ---
     Private txtRuta As System.Windows.Forms.TextBox
     Private btnExaminar As System.Windows.Forms.Button
-    Private cboUnidad As System.Windows.Forms.ComboBox
+    ' Un ComboBox DropDownList ignora BackColor con los estilos visuales de
+    ' Windows: siempre sale blanco. Se usa un boton con menu, que si se pinta.
+    Private btnUnidad As System.Windows.Forms.Button
+    Private menuUnidades As Object
     Private cboTema As System.Windows.Forms.ComboBox
     Private txtIndice As System.Windows.Forms.TextBox
     Private btnExaminarIndice As System.Windows.Forms.Button
@@ -658,7 +661,7 @@ Public Class BuscadorFicherosForm
 
     ' ================= INTERFAZ =================
     Private Sub InicializarComponentes()
-        Me.Text = "Buscador CAD - Indice de busqueda v7.7"
+        Me.Text = "Buscador CAD - Indice de busqueda v7.8"
         ' El borde va PRIMERO: al cambiarlo despues, WinForms conserva el area
         ' cliente y la ventana se queda ~39 px mas corta, cortando las barras
         ' de abajo.
@@ -717,6 +720,22 @@ Public Class BuscadorFicherosForm
         Return b
     End Function
 
+    ' El TextBox va dentro de un panel que hace de caja. Asi el alto lo fijamos
+    ' nosotros y ni el cambio de BorderStyle ni el de fuente pueden recortar el
+    ' texto, que era lo que dejaba los campos a medias.
+    Private Function CampoTexto(caja As System.Windows.Forms.TextBox, _
+            x As Integer, y As Integer, w As Integer, h As Integer, _
+            anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Panel
+        Dim marco As New System.Windows.Forms.Panel()
+        marco.Left = x : marco.Top = y : marco.Width = w : marco.Height = h
+        marco.Tag = "CAMPO" : marco.Anchor = anclaje
+        marco.Padding = New System.Windows.Forms.Padding(6, 3, 6, 3)
+        caja.BorderStyle = System.Windows.Forms.BorderStyle.None
+        caja.Dock = System.Windows.Forms.DockStyle.Fill
+        marco.Controls.Add(caja)
+        Return marco
+    End Function
+
     Private Function Tarjeta(x As Integer, y As Integer, w As Integer, h As Integer, _
             marca As String, anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Panel
         Dim p As New System.Windows.Forms.Panel()
@@ -741,7 +760,7 @@ Public Class BuscadorFicherosForm
         AddHandler lblTitulo.MouseDown, AddressOf OnArrastrarVentana
         cabecera.Controls.Add(lblTitulo)
 
-        cabecera.Controls.Add(EtiquetaTenue("v7.7", 182, 16, 40))
+        cabecera.Controls.Add(EtiquetaTenue("v7.8", 182, 16, 40))
 
         lblSincronizado = Etiqueta("   Indice sincronizado", 232, 10, 210)
         lblSincronizado.Height = 24
@@ -793,32 +812,22 @@ Public Class BuscadorFicherosForm
         panelIndice.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
 
         panelIndice.Controls.Add(EtiquetaTenue("UNIDAD", 14, 9, 70))
-        cboUnidad = New System.Windows.Forms.ComboBox()
-        cboUnidad.Left = 14 : cboUnidad.Top = 27 : cboUnidad.Width = 120
-        cboUnidad.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-        cboUnidad.Items.Add("Red")
-        Try
-            For Each unidad As String In System.Environment.GetLogicalDrives()
-                cboUnidad.Items.Add(unidad)
-            Next
-        Catch
-        End Try
-        AddHandler cboUnidad.SelectedIndexChanged, AddressOf OnUnidadChanged
-        panelIndice.Controls.Add(cboUnidad)
+        btnUnidad = Boton("Elegir...", 14, 25, 120, 24, anclaIzquierda)
+        AddHandler btnUnidad.Click, AddressOf OnElegirUnidad
+        panelIndice.Controls.Add(btnUnidad)
+        CrearMenuUnidades()
 
         panelIndice.Controls.Add(EtiquetaTenue("CARPETA A INDEXAR", 148, 9, 160))
         txtRuta = New System.Windows.Forms.TextBox()
-        txtRuta.Left = 148 : txtRuta.Top = 27 : txtRuta.Width = 300 : txtRuta.Anchor = anclaIzquierda
-        panelIndice.Controls.Add(txtRuta)
+        panelIndice.Controls.Add(CampoTexto(txtRuta, 148, 25, 300, 24, anclaIzquierda))
         btnExaminar = Boton("...", 452, 26, 34, 22, anclaIzquierda)
         AddHandler btnExaminar.Click, AddressOf OnExaminarRuta
         panelIndice.Controls.Add(btnExaminar)
 
         panelIndice.Controls.Add(EtiquetaTenue("CARPETA DEL INDICE", 500, 9, 160))
         txtIndice = New System.Windows.Forms.TextBox()
-        txtIndice.Left = 500 : txtIndice.Top = 27 : txtIndice.Width = 320 : txtIndice.Anchor = anclaIzquierda
         AddHandler txtIndice.TextChanged, AddressOf OnIndiceCarpetaChanged
-        panelIndice.Controls.Add(txtIndice)
+        panelIndice.Controls.Add(CampoTexto(txtIndice, 500, 25, 320, 24, anclaIzquierda))
         btnExaminarIndice = Boton("...", 824, 26, 34, 22, anclaIzquierda)
         AddHandler btnExaminarIndice.Click, AddressOf OnExaminarIndice
         panelIndice.Controls.Add(btnExaminarIndice)
@@ -857,13 +866,10 @@ Public Class BuscadorFicherosForm
         caja.Controls.Add(EtiquetaTenue("CODIGO", 14, 16, 60))
 
         txtCodigo = New System.Windows.Forms.TextBox()
-        txtCodigo.Left = 78 : txtCodigo.Top = 11 : txtCodigo.Width = 1000
-        txtCodigo.Anchor = anclaBarra
-        txtCodigo.BorderStyle = System.Windows.Forms.BorderStyle.None
         AddHandler txtCodigo.TextChanged, AddressOf OnCodigoTextChanged
         AddHandler txtCodigo.PreviewKeyDown, AddressOf OnCodigoPreviewKeyDown
         AddHandler txtCodigo.KeyDown, AddressOf OnCodigoKeyDown
-        caja.Controls.Add(txtCodigo)
+        caja.Controls.Add(CampoTexto(txtCodigo, 78, 9, 1000, 28, anclaBarra))
 
         btnLimpiar = Boton("X", 1086, 11, 26, 22, anclaDerecha)
         btnLimpiar.Visible = False
@@ -929,6 +935,10 @@ Public Class BuscadorFicherosForm
         AddHandler lstResultados.KeyDown, AddressOf OnResultadosKeyDown
         AddHandler lstResultados.SelectedIndexChanged, AddressOf OnSeleccionResultadosChanged
         AddHandler lstResultados.MouseDown, AddressOf OnResultadosMouseDown
+        lstResultados.OwnerDraw = True
+        AddHandler lstResultados.DrawColumnHeader, AddressOf OnDibujarCabecera
+        AddHandler lstResultados.DrawItem, AddressOf OnDibujarFila
+        AddHandler lstResultados.DrawSubItem, AddressOf OnDibujarSubFila
         CrearMenuContextualResultados()
         Me.Controls.Add(lstResultados)
     End Sub
@@ -977,8 +987,11 @@ Public Class BuscadorFicherosForm
 
         lblSeleccion = Etiqueta("Ningun fichero seleccionado", 14, 11, 340)
         acciones.Controls.Add(lblSeleccion)
+        ' 340 y no mas: con 400 llegaba a x=414 y se solapaba con btnCancelar
+        ' (x=393). Al anadirse antes que el boton, la etiqueta queda por delante
+        ' en el orden Z y le pintaba encima el borde izquierdo.
         acciones.Controls.Add(EtiquetaTenue( _
-            "Intro: abrir      Ctrl+C: copiar ruta      Supr: borrar", 14, 34, 400))
+            "Intro: abrir    Ctrl+C: copiar ruta    Supr: borrar", 14, 34, 340))
 
         btnCancelar = Boton("Cancelar", 393, 17, 95, 30, anclaDerecha)
         btnCancelar.Enabled = False
@@ -1009,6 +1022,12 @@ Public Class BuscadorFicherosForm
         btnAbrir.Tag = "ACENTO"
         AddHandler btnAbrir.Click, AddressOf OnAbrir
         acciones.Controls.Add(btnAbrir)
+
+        ' Cinturon: ninguna etiqueta puede volver a taparlos.
+        btnCancelar.BringToFront() : btnCopiarRuta.BringToFront()
+        btnCopiar.BringToFront() : btnMover.BringToFront()
+        btnBorrar.BringToFront() : btnAbrirCarpeta.BringToFront()
+        btnAbrir.BringToFront()
 
         Me.Controls.Add(acciones)
     End Sub
@@ -1261,6 +1280,7 @@ Public Class BuscadorFicherosForm
         txtRuta.Text = ruta
         txtIndice.Text = indice
         chkPartNumber.Checked = metadatos
+        ActualizarBotonUnidad()
 
         _temaSeleccionado = "Oscuro"
         If cboTema IsNot Nothing Then cboTema.SelectedItem = "Oscuro"
@@ -1340,6 +1360,7 @@ Public Class BuscadorFicherosForm
         Dim r As String = ElegirCarpeta(txtRuta.Text)
         If r <> "" Then
             txtRuta.Text = r
+            ActualizarBotonUnidad()
             ActualizarPildoraSincronizado()
         End If
     End Sub
@@ -1408,13 +1429,76 @@ Public Class BuscadorFicherosForm
         Return ""
     End Function
 
-    Private Sub OnUnidadChanged(sender As Object, e As System.EventArgs)
-        If cboUnidad.SelectedIndex = 0 Then
-            txtRuta.Text = RUTA_RED
-        ElseIf cboUnidad.SelectedIndex > 0 Then
-            txtRuta.Text = cboUnidad.SelectedItem.ToString()
+    ' Menu de unidades construido por reflexion, igual que el de resultados.
+    Private Sub CrearMenuUnidades()
+        menuUnidades = Nothing
+        Try
+            Dim ensamblado As System.Reflection.Assembly = GetType(System.Windows.Forms.Form).Assembly
+            Dim tipoMenu As System.Type = ensamblado.GetType("System.Windows.Forms.ContextMenuStrip", False)
+            Dim tipoItem As System.Type = ensamblado.GetType("System.Windows.Forms.ToolStripMenuItem", False)
+            If tipoMenu Is Nothing OrElse tipoItem Is Nothing Then Return
+
+            menuUnidades = System.Activator.CreateInstance(tipoMenu)
+            AgregarElementoMenuReflexion(menuUnidades, CrearElementoMenuReflexion(tipoItem, _
+                "Ruta de red (" & RUTA_RED & ")", New System.EventHandler(AddressOf OnUnidadElegida)))
+            Try
+                For Each unidad As String In System.Environment.GetLogicalDrives()
+                    AgregarElementoMenuReflexion(menuUnidades, CrearElementoMenuReflexion(tipoItem, _
+                        unidad, New System.EventHandler(AddressOf OnUnidadElegida)))
+                Next
+            Catch
+            End Try
+        Catch
+            menuUnidades = Nothing
+        End Try
+    End Sub
+
+    Private Sub OnElegirUnidad(sender As Object, e As System.EventArgs)
+        If menuUnidades Is Nothing Then
+            ' Sin menu disponible, el boton Examinar sigue haciendo el trabajo.
+            OnExaminarRuta(sender, e)
+            Return
         End If
-        ActualizarPildoraSincronizado()
+        Try
+            Dim metodo As System.Reflection.MethodInfo = menuUnidades.GetType().GetMethod( _
+                "Show", New System.Type() {GetType(System.Windows.Forms.Control), _
+                GetType(Integer), GetType(Integer)})
+            If metodo Is Nothing Then
+                OnExaminarRuta(sender, e)
+                Return
+            End If
+            metodo.Invoke(menuUnidades, New Object() {btnUnidad, 0, btnUnidad.Height})
+        Catch
+            OnExaminarRuta(sender, e)
+        End Try
+    End Sub
+
+    Private Sub OnUnidadElegida(sender As Object, e As System.EventArgs)
+        Try
+            Dim propiedad As System.Reflection.PropertyInfo = sender.GetType().GetProperty("Text")
+            If propiedad Is Nothing Then Return
+            Dim texto As String = System.Convert.ToString(propiedad.GetValue(sender, Nothing))
+            If texto.StartsWith("Ruta de red") Then
+                txtRuta.Text = RUTA_RED
+            Else
+                txtRuta.Text = texto
+            End If
+            ActualizarBotonUnidad()
+            ActualizarPildoraSincronizado()
+        Catch
+        End Try
+    End Sub
+
+    Private Sub ActualizarBotonUnidad()
+        If btnUnidad Is Nothing OrElse txtRuta Is Nothing Then Return
+        Dim ruta As String = txtRuta.Text.Trim()
+        If ruta.StartsWith("\\") Then
+            btnUnidad.Text = "Red"
+        ElseIf ruta.Length >= 2 AndAlso ruta.Substring(1, 1) = ":" Then
+            btnUnidad.Text = ruta.Substring(0, 2) & "\"
+        Else
+            btnUnidad.Text = "Elegir..."
+        End If
     End Sub
 
     Private Sub OnIndiceCarpetaChanged(sender As Object, e As System.EventArgs)
@@ -1459,6 +1543,19 @@ Public Class BuscadorFicherosForm
             Dim metodo As System.Reflection.MethodInfo = colorType.GetMethod("FromArgb", tipos)
             If metodo Is Nothing Then Return Nothing
             Return metodo.Invoke(Nothing, New Object() {r, g, b})
+        Catch
+            Return Nothing
+        End Try
+    End Function
+
+    ' Pincel solido creado por reflexion, para no referenciar System.Drawing.
+    Private Function CrearBrocha(color As Object) As Object
+        Try
+            If color Is Nothing Then Return Nothing
+            Dim tipo As System.Type = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing.Common")
+            If tipo Is Nothing Then tipo = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing")
+            If tipo Is Nothing Then Return Nothing
+            Return System.Activator.CreateInstance(tipo, New Object() {color})
         Catch
             Return Nothing
         End Try
@@ -1606,6 +1703,7 @@ Public Class BuscadorFicherosForm
             If TypeOf padre Is ConsultaUsosPanel Then Return _cTarjeta
             Dim marca As String = ""
             If padre.Tag IsNot Nothing Then marca = System.Convert.ToString(padre.Tag)
+            If marca = "CAMPO" Then Return _cEntrada
             If marca = "CABECERA" OrElse marca = "ESTADO" Then Return _cCabecera
             If marca = "ACCIONES" Then Return _cAcciones
             If marca = "TARJETA" OrElse marca = "BUSQUEDA" Then Return _cTarjeta
@@ -1620,6 +1718,8 @@ Public Class BuscadorFicherosForm
 
         AsignarColor(menuResultados, "BackColor", fondo)
         AsignarColor(menuResultados, "ForeColor", texto)
+        AsignarColor(menuUnidades, "BackColor", fondo)
+        AsignarColor(menuUnidades, "ForeColor", texto)
 
         Dim elementos() As Object = New Object() { _
             mnuCopiarRuta, mnuCopiarFichero, mnuMover, mnuBorrar, _
@@ -1640,10 +1740,9 @@ Public Class BuscadorFicherosForm
         If TypeOf control Is System.Windows.Forms.TextBox Then
             Dim caja As System.Windows.Forms.TextBox = _
                 DirectCast(control, System.Windows.Forms.TextBox)
-            ' Sin esto se queda el borde Fixed3D por defecto, que sobre fondo
-            ' oscuro se ve como un recuadro blanco alrededor del campo.
-            caja.BorderStyle = System.Windows.Forms.BorderStyle.None
-            AsignarColor(caja, "BackColor", If(caja Is txtCodigo, _cTarjeta, _cEntrada))
+            ' El borde lo quita CampoTexto al construirlo. Aqui solo el color, y
+            ' el mismo que el del marco para que se vea una caja continua.
+            AsignarColor(caja, "BackColor", _cEntrada)
             AsignarColor(caja, "ForeColor", _cTexto)
 
         ElseIf TypeOf control Is System.Windows.Forms.ComboBox Then
@@ -1705,6 +1804,7 @@ Public Class BuscadorFicherosForm
 
         ElseIf TypeOf control Is System.Windows.Forms.Panel Then
             Dim fondo As Object = _cTarjeta
+            If marca = "CAMPO" Then fondo = _cEntrada
             If marca = "CABECERA" OrElse marca = "ESTADO" Then fondo = _cCabecera
             If marca = "ACCIONES" Then fondo = _cAcciones
             AsignarColor(control, "BackColor", fondo)
@@ -2622,6 +2722,38 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
+    ' Windows dibuja las cabeceras de un ListView y no hace caso a BackColor ni
+    ' ForeColor: la unica forma de darles color es dibujarlas nosotros. Si algo
+    ' falla se cae a la cabecera del sistema, nunca se rompe.
+    Public Sub OnDibujarCabecera(sender As Object, _
+            e As System.Windows.Forms.DrawListViewColumnHeaderEventArgs)
+        Try
+            Dim brochaFondo As Object = CrearBrocha(_cAcento)
+            Dim brochaTexto As Object = CrearBrocha(_cTextoAcento)
+            If brochaFondo Is Nothing OrElse brochaTexto Is Nothing Then
+                e.DrawDefault = True
+                Return
+            End If
+            e.Graphics.FillRectangle(brochaFondo, e.Bounds)
+            e.Graphics.DrawString(e.Header.Text, e.Font, brochaTexto, _
+                CSng(e.Bounds.X + 6), CSng(e.Bounds.Y + 5))
+        Catch
+            e.DrawDefault = True
+        End Try
+    End Sub
+
+    ' Al activar OwnerDraw hay que atender tambien filas y subfilas, o dejan de
+    ' verse. Se delega en el dibujo normal para conservar las filas alternas.
+    Public Sub OnDibujarFila(sender As Object, _
+            e As System.Windows.Forms.DrawListViewItemEventArgs)
+        e.DrawDefault = True
+    End Sub
+
+    Public Sub OnDibujarSubFila(sender As Object, _
+            e As System.Windows.Forms.DrawListViewSubItemEventArgs)
+        e.DrawDefault = True
+    End Sub
+
     Private Sub OnColumnClick(sender As Object, e As System.Windows.Forms.ColumnClickEventArgs)
         If e.Column = _ordenActual Then
             _ascendente = Not _ascendente
@@ -3513,6 +3645,10 @@ Public Class ConsultaUsosPanel
         AddHandler listaEnsamblajes.DoubleClick, AddressOf AbrirEnsamblajesSeleccionados
         AddHandler listaEnsamblajes.KeyDown, AddressOf OnTeclaEnsamblajes
         AddHandler listaEnsamblajes.SelectedIndexChanged, AddressOf OnEnsamblajeSeleccionado
+        listaEnsamblajes.OwnerDraw = True
+        AddHandler listaEnsamblajes.DrawColumnHeader, AddressOf OnDibujarCabecera
+        AddHandler listaEnsamblajes.DrawItem, AddressOf OnDibujarFila
+        AddHandler listaEnsamblajes.DrawSubItem, AddressOf OnDibujarSubFila
         AddHandler Me.Resize, AddressOf AjustarListaEnsamblajes
 
         estado = New System.Windows.Forms.Label()
@@ -3632,6 +3768,55 @@ Public Class ConsultaUsosPanel
             MostrarSeleccion()
         End If
         IniciarCarga()
+    End Sub
+
+    ' Mismo criterio que el formulario: cabecera ambar con texto oscuro. Esta
+    ' clase no ve la paleta del formulario, asi que la reproduce aqui.
+    Private Function CrearBrochaPanel(r As Integer, g As Integer, b As Integer) As Object
+        Try
+            Dim tipoColor As System.Type = System.Type.GetType("System.Drawing.Color, System.Drawing.Primitives")
+            If tipoColor Is Nothing Then tipoColor = System.Type.GetType("System.Drawing.Color, System.Drawing.Common")
+            If tipoColor Is Nothing Then tipoColor = System.Type.GetType("System.Drawing.Color, System.Drawing")
+            If tipoColor Is Nothing Then Return Nothing
+            Dim tipos() As System.Type = New System.Type() {GetType(Integer), GetType(Integer), GetType(Integer)}
+            Dim metodo As System.Reflection.MethodInfo = tipoColor.GetMethod("FromArgb", tipos)
+            If metodo Is Nothing Then Return Nothing
+            Dim color As Object = metodo.Invoke(Nothing, New Object() {r, g, b})
+
+            Dim tipoBrocha As System.Type = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing.Common")
+            If tipoBrocha Is Nothing Then tipoBrocha = System.Type.GetType("System.Drawing.SolidBrush, System.Drawing")
+            If tipoBrocha Is Nothing Then Return Nothing
+            Return System.Activator.CreateInstance(tipoBrocha, New Object() {color})
+        Catch
+            Return Nothing
+        End Try
+    End Function
+
+    Public Sub OnDibujarCabecera(sender As Object, _
+            e As System.Windows.Forms.DrawListViewColumnHeaderEventArgs)
+        Try
+            Dim brochaFondo As Object = CrearBrochaPanel(214, 158, 46)
+            Dim brochaTexto As Object = CrearBrochaPanel(30, 35, 44)
+            If brochaFondo Is Nothing OrElse brochaTexto Is Nothing Then
+                e.DrawDefault = True
+                Return
+            End If
+            e.Graphics.FillRectangle(brochaFondo, e.Bounds)
+            e.Graphics.DrawString(e.Header.Text, e.Font, brochaTexto, _
+                CSng(e.Bounds.X + 6), CSng(e.Bounds.Y + 5))
+        Catch
+            e.DrawDefault = True
+        End Try
+    End Sub
+
+    Public Sub OnDibujarFila(sender As Object, _
+            e As System.Windows.Forms.DrawListViewItemEventArgs)
+        e.DrawDefault = True
+    End Sub
+
+    Public Sub OnDibujarSubFila(sender As Object, _
+            e As System.Windows.Forms.DrawListViewSubItemEventArgs)
+        e.DrawDefault = True
     End Sub
 
     Private Shared Function Clave(ruta As String, unidades As System.Collections.Generic.Dictionary(Of String, String)) As String
