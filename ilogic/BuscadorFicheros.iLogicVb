@@ -1,8 +1,8 @@
 ﻿' =====================================================================
-'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.6
+'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.7
 ' =====================================================================
 '
-'  Cambios v7.6:
+'  Cambios v7.7:
 '    - La busqueda se lanza sola al teclear (350 ms). Ya no depende de Intro,
 '      que Inventor se traga en formularios no modales.
 '    - Cabecera propia con botones Minimizar, Maximizar y Cerrar. Cerrar ya no
@@ -378,6 +378,8 @@ Public Class BuscadorFicherosForm
     Private _nPlanos As Integer = 0
     Private _errorTrabajo As String = ""
     Private _avisosPropiedades As Integer = 0
+    Private _leidosDeInventor As Integer = 0
+    Private _reutilizados As Integer = 0
     Private _archivoIndexadoEnCurso As String = ""
 
     Private _indice As System.Collections.Generic.List(Of String())
@@ -656,11 +658,14 @@ Public Class BuscadorFicherosForm
 
     ' ================= INTERFAZ =================
     Private Sub InicializarComponentes()
-        Me.Text = "Buscador CAD - Indice de busqueda v7.6"
+        Me.Text = "Buscador CAD - Indice de busqueda v7.7"
+        ' El borde va PRIMERO: al cambiarlo despues, WinForms conserva el area
+        ' cliente y la ventana se queda ~39 px mas corta, cortando las barras
+        ' de abajo.
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None
         Me.Width = 1320
         Me.Height = 742
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
-        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None
         Me.ShowInTaskbar = True
         Me.KeyPreview = True
 
@@ -736,7 +741,7 @@ Public Class BuscadorFicherosForm
         AddHandler lblTitulo.MouseDown, AddressOf OnArrastrarVentana
         cabecera.Controls.Add(lblTitulo)
 
-        cabecera.Controls.Add(EtiquetaTenue("v7.6", 182, 16, 40))
+        cabecera.Controls.Add(EtiquetaTenue("v7.7", 182, 16, 40))
 
         lblSincronizado = Etiqueta("   Indice sincronizado", 232, 10, 210)
         lblSincronizado.Height = 24
@@ -822,10 +827,10 @@ Public Class BuscadorFicherosForm
         panelIndice.Controls.Add(lblIndiceInfo)
 
         chkPartNumber = New System.Windows.Forms.CheckBox()
-        chkPartNumber.Text = "Metadatos de iProperties"
-        chkPartNumber.Left = 872 : chkPartNumber.Top = 26 : chkPartNumber.Width = 200
+        chkPartNumber.Text = "Nº de pieza y descripcion"
+        chkPartNumber.Left = 872 : chkPartNumber.Top = 26 : chkPartNumber.Width = 210
         chkPartNumber.Checked = False
-        chkPartNumber.Enabled = False
+        AddHandler chkPartNumber.CheckedChanged, AddressOf OnMetadatosChanged
         panelIndice.Controls.Add(chkPartNumber)
 
         btnIndexar = Boton("Reindexar", 1090, 25, 85, 26, anclaDerecha)
@@ -1239,6 +1244,7 @@ Public Class BuscadorFicherosForm
     Private Sub CargarAjustes()
         Dim ruta As String = RUTA_DEFECTO
         Dim indice As String = RUTA_INDICES
+        Dim metadatos As Boolean = False
         Try
             Dim a As String = ArchivoAjustes()
             If System.IO.File.Exists(a) Then
@@ -1247,13 +1253,14 @@ Public Class BuscadorFicherosForm
                 ' Conservar la ruta elegida aunque la unidad o la red no esten
                 ' disponibles temporalmente al abrir el formulario.
                 If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
+                If ls.Length >= 3 Then metadatos = (ls(2).Trim() = "1")
             End If
         Catch
         End Try
 
         txtRuta.Text = ruta
         txtIndice.Text = indice
-        chkPartNumber.Checked = False
+        chkPartNumber.Checked = metadatos
 
         _temaSeleccionado = "Oscuro"
         If cboTema IsNot Nothing Then cboTema.SelectedItem = "Oscuro"
@@ -1265,7 +1272,8 @@ Public Class BuscadorFicherosForm
             System.IO.Directory.CreateDirectory(CarpetaConfig())
             System.IO.File.WriteAllText(ArchivoAjustes(), _
                 txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf & _
-                "0" & vbCrLf & NormalizarTema(_temaSeleccionado) & vbCrLf)
+                If(chkPartNumber.Checked, "1", "0") & vbCrLf & _
+                NormalizarTema(_temaSeleccionado) & vbCrLf)
         Catch
         End Try
     End Sub
@@ -1632,6 +1640,9 @@ Public Class BuscadorFicherosForm
         If TypeOf control Is System.Windows.Forms.TextBox Then
             Dim caja As System.Windows.Forms.TextBox = _
                 DirectCast(control, System.Windows.Forms.TextBox)
+            ' Sin esto se queda el borde Fixed3D por defecto, que sobre fondo
+            ' oscuro se ve como un recuadro blanco alrededor del campo.
+            caja.BorderStyle = System.Windows.Forms.BorderStyle.None
             AsignarColor(caja, "BackColor", If(caja Is txtCodigo, _cTarjeta, _cEntrada))
             AsignarColor(caja, "ForeColor", _cTexto)
 
@@ -1731,6 +1742,34 @@ Public Class BuscadorFicherosForm
 
         GuardarAjustes()
         cancelar = False
+
+        If chkPartNumber.Checked Then
+            Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
+            lblEstado.Text = "Comprobando cuantos ficheros hay que abrir..."
+            lblEstado.Refresh()
+            Dim pendientes As Integer = ContarFicherosSinPropiedades(ruta, ArchivoIndiceActual())
+            Me.Cursor = System.Windows.Forms.Cursors.Default
+            If pendientes < 0 Then
+                lblEstado.Text = "No se pudo acceder a la carpeta a indexar."
+                Return
+            End If
+            If pendientes > 0 Then
+                Dim resp As System.Windows.Forms.DialogResult = System.Windows.Forms.MessageBox.Show( _
+                    "Hay que abrir " & pendientes.ToString() & " fichero(s) en Inventor para leer " & _
+                    "Nº de pieza y descripcion." & vbCrLf & vbCrLf & _
+                    "Inventor se quedara ocupado mientras dure y en una carpeta grande puede " & _
+                    "tardar mucho. Puedes detenerlo con Cancelar en cualquier momento." & vbCrLf & vbCrLf & _
+                    "¿Continuar?", "Leer propiedades", _
+                    System.Windows.Forms.MessageBoxButtons.YesNo, _
+                    System.Windows.Forms.MessageBoxIcon.Warning, _
+                    System.Windows.Forms.MessageBoxDefaultButton.Button2)
+                If resp <> System.Windows.Forms.DialogResult.Yes Then
+                    lblEstado.Text = "Indexado cancelado."
+                    Return
+                End If
+            End If
+        End If
+
         btnIndexar.Enabled = False
         btnActualizar.Enabled = False
         btnBuscar.Enabled = True
@@ -1746,8 +1785,14 @@ Public Class BuscadorFicherosForm
         _avisosPropiedades = 0
         Dim modo As String = If(esActualizacion, "Actualizando", "Indexando")
 
-        lblEstado.Text = modo & " nombres de archivos en segundo plano: " & ruta & " ..."
-        hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo, esActualizacion))
+        Dim conPropiedades As Boolean = chkPartNumber.Checked
+        If conPropiedades Then
+            lblEstado.Text = modo & " con propiedades: " & ruta & " ..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoCompleto(ruta, archivo, esActualizacion))
+        Else
+            lblEstado.Text = modo & " nombres de archivos en segundo plano: " & ruta & " ..."
+            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo, esActualizacion))
+        End If
         hiloTrabajo.IsBackground = True
         Try
             hiloTrabajo.SetApartmentState(System.Threading.ApartmentState.STA)
@@ -1755,6 +1800,43 @@ Public Class BuscadorFicherosForm
         End Try
         hiloTrabajo.Start()
     End Sub
+
+    ' Al marcar la casilla se avisa una vez de lo que implica, para que nadie
+    ' lance por error un indexado de horas.
+    Private Sub OnMetadatosChanged(sender As Object, e As System.EventArgs)
+        GuardarAjustes()
+        If chkPartNumber.Checked Then
+            lblEstado.Text = "Reindexar leera Nº de pieza y descripcion. Abre cada fichero en Inventor: es lento y solo se abren los modificados."
+        Else
+            lblEstado.Text = "Indexado rapido: solo nombre y fecha. No abre nada en Inventor."
+        End If
+    End Sub
+
+    ' Cuenta cuantos ficheros habria que abrir de verdad. Los que conserven la
+    ' fecha del indice anterior se copian y no se abren.
+    Private Function ContarFicherosSinPropiedades(ruta As String, archivo As String) As Integer
+        Dim pendientes As Integer = 0
+        Try
+            Dim viejo As System.Collections.Generic.Dictionary(Of String, String()) = _
+                CargarIndiceDiccionario(archivo)
+            Dim lista As New System.Collections.Generic.List(Of String)
+            ReunirArchivosIndexables(ruta, lista)
+            For Each f As String In lista
+                Dim ticks As Long = 0
+                Try
+                    ticks = System.IO.File.GetLastWriteTime(f).Ticks
+                Catch
+                End Try
+                Dim prev() As String = Nothing
+                If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() AndAlso _
+                        (prev(1) <> "" OrElse prev(2) <> "") Then Continue For
+                pendientes += 1
+            Next
+        Catch
+            Return -1
+        End Try
+        Return pendientes
+    End Function
 
     Private Function CargarIndiceDiccionario(archivo As String) _
             As System.Collections.Generic.Dictionary(Of String, String())
@@ -1797,6 +1879,8 @@ Public Class BuscadorFicherosForm
         _cuentaIndexada = 0
         _progreso = 0
         _totalIndexar = 0
+        _leidosDeInventor = 0
+        _reutilizados = 0
         _faseIndexacion = "Contando"
         _nPiezas = 0
         _nEnsam = 0
@@ -1908,6 +1992,117 @@ Public Class BuscadorFicherosForm
         Return n
     End Function
 
+    ' Igual que el rapido, pero abriendo en Inventor los ficheros cuyo Nº de
+    ' pieza y descripcion no esten ya en el indice anterior con la misma fecha.
+    Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String, esActualizacion As Boolean)
+        _cuentaIndexada = 0
+        _progreso = 0
+        _totalIndexar = 0
+        _leidosDeInventor = 0
+        _reutilizados = 0
+        _faseIndexacion = "Contando"
+        _nPiezas = 0
+        _nEnsam = 0
+        _nPlanos = 0
+        _errorTrabajo = ""
+
+        Dim viejo As System.Collections.Generic.Dictionary(Of String, String()) = _
+            CargarIndiceDiccionario(archivo)
+        Dim archivoTemporal As String = archivo & ".tmp"
+
+        Try
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(archivo))
+            If Not System.IO.Directory.Exists(ruta) Then Throw New System.Exception("No se puede acceder a la carpeta a indexar.")
+            If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
+
+            Dim archivosIndexables As New System.Collections.Generic.List(Of String)
+            ActualizarProgresoAsync()
+            ReunirArchivosIndexables(ruta, archivosIndexables)
+            _totalIndexar = archivosIndexables.Count
+            _progreso = 0 : _faseIndexacion = "Propiedades"
+            ActualizarProgresoAsync()
+
+            Using sw As New System.IO.StreamWriter(archivoTemporal, False, New System.Text.UTF8Encoding(False))
+                sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta & vbTab & "PN+DESC")
+                _cuentaIndexada = IndexarListaCompleto(archivosIndexables, sw, viejo)
+            End Using
+
+            If cancelar Then
+                Try
+                    If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
+                Catch
+                End Try
+            Else
+                ReemplazarIndiceDeFormaSegura(archivoTemporal, archivo)
+            End If
+
+        Catch ex As System.Exception
+            _errorTrabajo = ex.Message
+            Try
+                If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
+            Catch
+            End Try
+        End Try
+
+        Try
+            If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
+                Me.BeginInvoke(New System.Action(AddressOf FinIndexado))
+            End If
+        Catch
+        End Try
+    End Sub
+
+    Private Function IndexarListaCompleto(archivos As System.Collections.Generic.List(Of String), _
+            sw As System.IO.StreamWriter, viejo As System.Collections.Generic.Dictionary(Of String, String())) As Integer
+        Dim n As Integer = 0
+        For Each f As String In archivos
+            If cancelar Then Return n
+            Dim ticks As Long = 0
+            Try
+                ticks = System.IO.File.GetLastWriteTime(f).Ticks
+            Catch
+            End Try
+
+            Dim pn As String = ""
+            Dim desc As String = ""
+            Dim prev() As String = Nothing
+            If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() AndAlso _
+                    (prev(1) <> "" OrElse prev(2) <> "") Then
+                ' Ya se leyo en su dia y el fichero no ha cambiado: no se abre.
+                pn = prev(1)
+                desc = prev(2)
+                _reutilizados += 1
+            Else
+                Dim datos() As String = LeerPropiedadesPieza(f)
+                pn = datos(0)
+                desc = datos(1)
+                _leidosDeInventor += 1
+            End If
+
+            EscribirEntrada(sw, f, ticks, pn, desc)
+            n += 1
+            _progreso = n
+            ActualizarProgresoAsync()
+        Next
+        Return n
+    End Function
+
+    ' La API de Inventor es de un solo hilo: el trabajo vuelve al hilo de la
+    ' interfaz. Un fichero que falle suma un aviso pero no detiene el indexado.
+    Private Function LeerPropiedadesPieza(ruta As String) As String()
+        Try
+            Dim datos As System.Collections.Generic.List(Of String()) = DirectCast( _
+                Me.Invoke(New System.Func(Of System.Collections.Generic.List(Of String()))( _
+                    Function() LeerDocumentoParaIndice(ruta, True))), _
+                System.Collections.Generic.List(Of String()))
+            If datos Is Nothing OrElse datos.Count = 0 Then Return New String() {"", ""}
+            Return datos(0)
+        Catch ex As System.Exception
+            System.Threading.Interlocked.Increment(_avisosPropiedades)
+            Return New String() {"", ""}
+        End Try
+    End Function
+
     Private Sub ActualizarProgresoAsync()
         Try
             If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
@@ -1935,7 +2130,13 @@ Public Class BuscadorFicherosForm
             End If
             barraProgreso.Value = porcentaje
             lblPorcentaje.Text = porcentaje.ToString() & " %"
-            lblEstado.Text = "Indexando: " & porcentaje.ToString() & " % (" & _progreso.ToString() & " de " & _totalIndexar.ToString() & " archivos)."
+            If _faseIndexacion = "Propiedades" Then
+                lblEstado.Text = "Leyendo propiedades: " & porcentaje.ToString() & " % (" & _
+                    _progreso.ToString() & " de " & _totalIndexar.ToString() & " archivos; " & _
+                    _leidosDeInventor.ToString() & " abiertos, " & _reutilizados.ToString() & " ya en cache)."
+            Else
+                lblEstado.Text = "Indexando: " & porcentaje.ToString() & " % (" & _progreso.ToString() & " de " & _totalIndexar.ToString() & " archivos)."
+            End If
         End If
     End Sub
 
@@ -2007,9 +2208,16 @@ Public Class BuscadorFicherosForm
         Else
             barraProgreso.Maximum = 100 : barraProgreso.Value = 100
             lblPorcentaje.Text = "100 %" : lblPorcentaje.Visible = True
-            lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (" & _
+            Dim resumen As String = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (" & _
                 _nPiezas.ToString() & " piezas, " & _nEnsam.ToString() & " ensamblajes, " & _
-                _nPlanos.ToString() & " planos). Preparando relaciones..."
+                _nPlanos.ToString() & " planos)."
+            If _leidosDeInventor > 0 OrElse _reutilizados > 0 Then
+                resumen &= " Propiedades: " & _leidosDeInventor.ToString() & " leidas, " & _
+                    _reutilizados.ToString() & " reutilizadas"
+                If _avisosPropiedades > 0 Then resumen &= ", " & _avisosPropiedades.ToString() & " con aviso"
+                resumen &= "."
+            End If
+            lblEstado.Text = resumen & " Preparando relaciones..."
             If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice(), True)
             LanzarRelacionesEnSegundoInventor()
         End If
