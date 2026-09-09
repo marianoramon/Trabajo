@@ -1,28 +1,53 @@
-# Buscador de ficheros en la red (regla iLogic)
+# Buscador CAD (regla iLogic)
 
 `BuscadorFicheros.iLogicVb` es la regla externa de iLogic (Inventor 2026) que busca
-piezas, ensamblajes y planos sobre un indice de red y, ademas, indica en que
-ensamblajes se encuentra la pieza seleccionada.
+piezas, ensamblajes y planos sobre un índice de red e indica en qué ensamblajes se
+encuentra la pieza seleccionada.
 
-## Como funciona la consulta de usos
+## Cómo funciona el índice
 
-1. **Indexar ahora** / **Actualizar** genera `IndiceBuscador_*.txt` (nombre, fecha y,
-   opcionalmente, Nº de pieza y descripcion).
-2. Al terminar, la regla recorre cada `.iam` del indice y escribe el fichero de
-   relaciones `IndiceBuscador_*.txt.usos` con las lineas `R <ensamblaje> <componente>`.
-3. Al seleccionar un resultado, el panel inferior invierte ese mapa y muestra los
-   ensamblajes que contienen la pieza.
+1. **Reindexar** / **Actualizar** recorre la carpeta y escribe `IndiceBuscador_*.txt`
+   con nombre, fecha y ruta de cada `.ipt`, `.iam` e `.idw`. Solo lee el sistema de
+   ficheros: **no necesita abrir nada en Inventor**.
+2. Al terminar lanza un proceso aparte (PowerShell + una instancia oculta de Inventor)
+   que recorre cada `.iam` y escribe `IndiceBuscador_*.txt.usos` con las relaciones
+   `R <ensamblaje> <componente>`. Mientras corre puedes seguir trabajando.
+3. El panel derecho invierte ese mapa y lista los ensamblajes que contienen la pieza.
 
-## Panel "Ensamblajes que utilizan la pieza" (v5.7)
+## Teclado y cierre (v7.6)
 
-| Columna | Contenido |
+Un formulario **no modal** dentro de Inventor no tiene bucle de mensajes propio:
+Inventor procesa las teclas primero y se queda con Intro y Escape. Por eso la regla
+no depende de ellas:
+
+- **La búsqueda se lanza sola** 350 ms después de dejar de teclear, a partir de 2
+  caracteres. No hace falta pulsar Intro.
+- **El botón ✕ de la cabecera** cierra la ventana. No hace falta pulsar Escape.
+- Intro y Escape siguen cableados por cuatro vías (`ProcessCmdKey`, `ProcessDialogKey`,
+  `KeyDown` del formulario e `IMessageFilter`) por si Inventor las suelta.
+- Relanzar la regla activa la ventana ya abierta en lugar de duplicarla.
+
+## Interfaz
+
+Ventana sin bordes de 1320 × 742 con cabecera propia (arrastre desde la cabecera,
+redimensión desde la esquina inferior derecha). Paleta oscura ajustada al esquema de
+Inventor, con acento ámbar en las acciones principales.
+
+| Franja | Contenido |
 | --- | --- |
-| Pieza buscada | Fichero seleccionado en los resultados |
-| Ensamblaje | Nombre del ensamblaje que lo contiene |
-| Uso | `Directo` si lo monta directamente, `Nivel N` si llega a traves de N subconjuntos; se anade `- conjunto final` cuando el ensamblaje no esta montado en ningun otro |
-| Ruta del ensamblaje | Ruta completa (UNC si la unidad es de red) |
+| Cabecera | Título, píldora de índice, pestaña activa y `– □ ✕` |
+| Tarjeta de índice | Unidad, carpeta a indexar, carpeta del índice, **Reindexar** / **Actualizar** |
+| Búsqueda | Campo grande, botón limpiar y botón Buscar |
+| Filtros | Todos · `.ipt` Piezas · `.iam` Ensamblajes · `.idw` Planos + contador |
+| Lista | Código y nombre, formato, modificado, ruta compartida |
+| Panel derecho | Ensamblajes vinculados, ruta del seleccionado y **Abrir ensamblaje IAM** |
+| Acciones | Copiar ruta, Copiar fichero, Mover, Borrar, Explorar carpeta, **Abrir en Inventor** |
 
-- Doble clic o Enter abre el ensamblaje en Inventor (si ya esta abierto, lo activa).
-- Ctrl+C copia las rutas seleccionadas.
-- Se ignoran las copias de `OldVersions`.
-- Si falta el fichero `.usos`, el panel avisa de que hay que pulsar **Actualizar**.
+## Limitaciones conocidas
+
+- Los ensamblajes solo salen si su carpeta está **indexada**. Una pieza usada en un
+  conjunto de una carpeta sin indexar parecerá no usada.
+- El indexado por **Nº de pieza y descripción** (iProperties) está desactivado: exige
+  abrir cada fichero en Inventor y bloquea la sesión. El código se conserva en
+  `LeerDocumentoParaIndice` por si se vuelve a habilitar.
+- Se ignoran las carpetas `OldVersions`.

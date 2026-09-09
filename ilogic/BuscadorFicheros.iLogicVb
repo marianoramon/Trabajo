@@ -1,53 +1,313 @@
 ﻿' =====================================================================
-'  BUSCADOR DE FICHEROS EN LA RED (con INDICE) - v5.7
+'  BUSCADOR CAD - INDICE DE BUSQUEDA - v7.6
 ' =====================================================================
 '
-'  Nuevas caracteristicas v5.7:
-'    - Al seleccionar una pieza se listan los ensamblajes donde se encuentra
-'      con nombre, nivel de uso (directo o a traves de subconjuntos) y ruta
-'    - Los ensamblajes de nivel superior se marcan como "conjunto final"
-'    - Doble clic o Enter abre el ensamblaje en Inventor; Ctrl+C copia su ruta
-'    - Se ignoran los ensamblajes guardados en OldVersions
-'
-'  Nuevas caracteristicas v5.6:
-'    - Selector de tema: Sistema, Normal y Oscuro
-'    - Menu contextual con boton derecho creado por reflexion para compatibilidad iLogic
-'    - Paleta oscura ajustada al esquema visual de Inventor del usuario
-'    - El modo Sistema sigue automaticamente el tema claro/oscuro de Windows
-'    - Mover uno o varios ficheros y actualizar el indice
-'    - Filtrado interactivo por tipo sin repetir la busqueda
-'    - Filas alternas estilo macOS sin referencias directas a System.Drawing
-'    - Tecla Escape para cerrar la aplicacion
-'    - Seleccion multiple de resultados
-'    - Abrir uno o varios documentos en Inventor sin cerrar el buscador
-'    - Copiar uno o varios ficheros a otra carpeta
-'    - Copiar una o varias rutas al portapapeles
-'    - Borrar ficheros con confirmacion y limpieza inmediata del indice
-'    - Atajos: Enter, Ctrl+C y Supr
-'    - Ordenar resultados clickeando en encabezados
+'  Cambios v7.6:
+'    - La busqueda se lanza sola al teclear (350 ms). Ya no depende de Intro,
+'      que Inventor se traga en formularios no modales.
+'    - Cabecera propia con botones Minimizar, Maximizar y Cerrar. Cerrar ya no
+'      depende de la tecla Escape.
+'    - Escape e Intro se cablean por cuatro vias distintas por si Inventor los
+'      suelta: ProcessCmdKey, ProcessDialogKey, KeyDown del formulario e
+'      IMessageFilter.
+'    - Al relanzar la regla se activa la ventana ya abierta en vez de duplicarla.
+'    - Interfaz rehecha en una sola pasada, con acento ambar en las acciones
+'      principales y la paleta oscura de siempre.
 '
 '  Modos de indexado:
-'    - Rapido: solo nombre
-'    - Completo: nombre + Nº de pieza + Descripcion (lee iProperties)
+'    - Rapido: solo nombre (no necesita Inventor)
+'    - Relaciones: proceso aparte en segundo plano que lee los ensamblajes
 '
 ' =====================================================================
 
 Sub Main()
+    Try
+        If BuscadorFicherosForm.Instancia IsNot Nothing AndAlso _
+                Not BuscadorFicherosForm.Instancia.IsDisposed Then
+            BuscadorFicherosForm.Instancia.Activate()
+            Return
+        End If
+    Catch
+    End Try
+
     Dim frm As New BuscadorFicherosForm(ThisApplication)
-    frm.ShowDialog()
+    BuscadorFicherosForm.Instancia = frm
+    Try
+        frm.Show(New VentanaInventor(New System.IntPtr( _
+            System.Convert.ToInt64(ThisApplication.MainFrameHWND))))
+    Catch
+        frm.Show()
+    End Try
+    Try
+        frm.Activate()
+    Catch
+    End Try
 End Sub
+
+
+' Envuelve el HWND de Inventor para poder mostrar el formulario como ventana
+' hija suya. Sin esto la ventana se queda por detras y pierde el foco.
+Public Class VentanaInventor
+    Implements System.Windows.Forms.IWin32Window
+
+    Private _identificador As System.IntPtr
+
+    Public Sub New(identificador As System.IntPtr)
+        _identificador = identificador
+    End Sub
+
+    Public ReadOnly Property Handle As System.IntPtr _
+            Implements System.Windows.Forms.IWin32Window.Handle
+        Get
+            Return _identificador
+        End Get
+    End Property
+End Class
 
 
 Public Class BuscadorFicherosForm
     Inherits System.Windows.Forms.Form
+    Implements System.Windows.Forms.IMessageFilter
+
+    Public Shared Instancia As BuscadorFicherosForm
 
     Private Const RUTA_DEFECTO As String = "P:\"
     Private Const RUTA_RED As String = "\\192.168.10.217\DISEÑO"
     Private Const RUTA_INDICES As String = "P:\000 MARIANADAS\INDEX"
     Private Const MAX_RESULTADOS As Integer = 2000
+    Private Const RETARDO_BUSQUEDA As Integer = 350
+    Private Const MINIMO_BUSQUEDA As Integer = 2
+
+    ' Arrastre y redimension de la ventana sin bordes.
+    Private Declare Function ReleaseCapture Lib "user32.dll" () As Integer
+    Private Declare Function SendMessage Lib "user32.dll" Alias "SendMessageA" ( _
+        hWnd As System.IntPtr, mensaje As Integer, wParam As Integer, lParam As Integer) As Integer
+
+    Private Const CODIGO_RELACIONES As String = _
+        "JABFAHIAcgBvAHIAQQBjAHQAaQBvAG4AUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAdABvAHAAJwAKACQAYQByAGMAaABpAHYAbwBJAG4AZABpAGMAZQAgAD0AIAAkAGUAbgB2ADoAQgBVAFMAQwBBAEQATwBSAF8AQQBSAEMASABJAFYATwBfAEkATgBEAEkAQwBFAAoAJABhAHIAYwBoAGkAdgBvAFAAcgBvAGcAcgBlAHMAbwAgAD0AIAAkAGUAbgB2ADoAQgBVAFMAQwBBAEQATwBSAF8AQQBSAEMASABJAFYATwBfAFAAUgBPAEcAUgBFAFMATwAKACQAYQByAGMAaABpAHYAbwBDAGEAbgBjAGUAbABhAHIAIAA9ACAAJABlAG4AdgA6AEIAVQBTAEMAQQBEAE8AUgBfAEEAUgBDAEgASQBWAE8AXwBDAEEATgBDAEUATABBAFIACgAkAGEAcgBjAGgAaQB2AG8ARQByAHIAbwByACAAPQAgACQAZQBuAHYAOgBCAFUAUwBDAEEARABPAFIAXwBBAFIAQwBIAEkAVgBPAF8ARQBSAFIATwBSAAoAJABhAHAAcAAgAD0AIAAkAG4AdQBsAGwACgAkAHQAZQBtAHAAbwByAGEAbAAgAD0AIAAkAG4AdQBsAGwACgAkAHAAcgBvAGMAZQBzAGEAZABv" & _
+        "AHMAIAA9ACAAMAAKACQAYQB2AGkAcwBvAHMAIAA9ACAAMAAKACQAYwBvAGQAaQBnAG8AUwBhAGwAaQBkAGEAIAA9ACAAMAAKAAoAZgB1AG4AYwB0AGkAbwBuACAAQgA2ADQAKABbAHMAdAByAGkAbgBnAF0AJAB0AGUAeAB0AG8AKQAgAHsACgAgACAAIAAgAFsAQwBvAG4AdgBlAHIAdABdADoAOgBUAG8AQgBhAHMAZQA2ADQAUwB0AHIAaQBuAGcAKABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAAuAEcAZQB0AEIAeQB0AGUAcwAoACQAdABlAHgAdABvACkAKQAKAH0ACgAKAGYAdQBuAGMAdABpAG8AbgAgAEYAcgBvAG0ALQBCADYANAAoAFsAcwB0AHIAaQBuAGcAXQAkAHQAZQB4AHQAbwApACAAewAKACAAIAAgACAAWwBUAGUAeAB0AC4ARQBuAGMAbwBkAGkAbgBnAF0AOgA6AFUAVABGADgALgBHAGUAdABTAHQAcgBpAG4AZwAoAFsAQwBvAG4AdgBlAHIAdABdADoAOgBGAHIAbwBtAEIAYQBzAGUANgA0AFMAdAByAGkAbgBnACgAJAB0AGUAeAB0AG8AKQApAAoAfQAKAAoAZgB1AG4AYwB0AGkAbwBuACAA" & _
+        "QwBhAG4AYwBlAGwAYQBjAGkAbwBuAC0AUwBvAGwAaQBjAGkAdABhAGQAYQAgAHsACgAgACAAIAAgACQAYQByAGMAaABpAHYAbwBDAGEAbgBjAGUAbABhAHIAIAAtAGEAbgBkACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AEUAeABpAHMAdABzACgAJABhAHIAYwBoAGkAdgBvAEMAYQBuAGMAZQBsAGEAcgApAAoAfQAKAAoAZgB1AG4AYwB0AGkAbwBuACAARwB1AGEAcgBkAGEAcgAtAFAAcgBvAGcAcgBlAHMAbwAoAFsAaQBuAHQAXQAkAGgAZQBjAGgAbwBzACwAIABbAGkAbgB0AF0AJAB0AG8AdABhAGwALAAgAFsAaQBuAHQAXQAkAGMAYQBtAGIAaQBhAGQAbwBzACwAIABbAGkAbgB0AF0AJAB0AG8AdABhAGwAQwBhAG0AYgBpAG8AcwApACAAewAKACAAIAAgACAAaQBmACAAKAAtAG4AbwB0ACAAJABhAHIAYwBoAGkAdgBvAFAAcgBvAGcAcgBlAHMAbwApACAAewAgAHIAZQB0AHUAcgBuACAAfQAKACAAIAAgACAAJABjAG8AbgB0AGUAbgBpAGQAbwAgAD0AIAAiACQAaABlAGMAaABvAHMAfAAkAHQAbwB0AGEAbAB8ACQAYwBhAG0AYgBp" & _
+        "AGEAZABvAHMAfAAkAHQAbwB0AGEAbABDAGEAbQBiAGkAbwBzACIACgAgACAAIAAgAGYAbwByACAAKAAkAGkAbgB0AGUAbgB0AG8AIAA9ACAAMAA7ACAAJABpAG4AdABlAG4AdABvACAALQBsAHQAIAAxADAAOwAgACQAaQBuAHQAZQBuAHQAbwArACsAKQAgAHsACgAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AFcAcgBpAHQAZQBBAGwAbABUAGUAeAB0ACgAJABhAHIAYwBoAGkAdgBvAFAAcgBvAGcAcgBlAHMAbwAsACAAJABjAG8AbgB0AGUAbgBpAGQAbwApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAcgBlAHQAdQByAG4ACgAgACAAIAAgACAAIAAgACAAfQAgAGMAYQB0AGMAaAAgAFsASQBPAC4ASQBPAEUAeABjAGUAcAB0AGkAbwBuAF0AIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAUwB0AGEAcgB0AC0AUwBsAGUAZQBwACAALQBNAGkAbABsAGkAcwBlAGMAbwBuAGQAcwAgADIANQAKACAAIAAgACAAIAAgACAAIAB9ACAAYwBhAHQA" & _
+        "YwBoACAAWwBVAG4AYQB1AHQAaABvAHIAaQB6AGUAZABBAGMAYwBlAHMAcwBFAHgAYwBlAHAAdABpAG8AbgBdACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFMAdABhAHIAdAAtAFMAbABlAGUAcAAgAC0ATQBpAGwAbABpAHMAZQBjAG8AbgBkAHMAIAAyADUACgAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAfQAKACAAIAAgACAAIwAgAEUAbAAgAHAAcgBvAGcAcgBlAHMAbwAgAGUAcwAgAGkAbgBmAG8AcgBtAGEAdABpAHYAbwA6ACAAdQBuACAAYgBsAG8AcQB1AGUAbwAgAG0AbwBtAGUAbgB0AGEAbgBlAG8AIABuAHUAbgBjAGEAIABkAGUAYgBlACAAZABlAHQAZQBuAGUAcgAKACAAIAAgACAAIwAgAGwAYQAgAGcAZQBuAGUAcgBhAGMAaQBvAG4AIABkAGUAbAAgAGkAbgBkAGkAYwBlACAAZABlACAAcgBlAGwAYQBjAGkAbwBuAGUAcwAuAAoAfQAKAAoAZgB1AG4AYwB0AGkAbwBuACAAUgBlAGUAbQBwAGwAYQB6AGEAcgAtAFMAZQBnAHUAcgBvACgAWwBzAHQAcgBpAG4AZwBdACQAbwByAGkAZwBlAG4ALAAgAFsAcwB0" & _
+        "AHIAaQBuAGcAXQAkAGQAZQBzAHQAaQBuAG8AKQAgAHsACgAgACAAIAAgAGkAZgAgACgALQBuAG8AdAAgAFsASQBPAC4ARgBpAGwAZQBdADoAOgBFAHgAaQBzAHQAcwAoACQAZABlAHMAdABpAG4AbwApACkAIAB7AAoAIAAgACAAIAAgACAAIAAgAFsASQBPAC4ARgBpAGwAZQBdADoAOgBNAG8AdgBlACgAJABvAHIAaQBnAGUAbgAsACAAJABkAGUAcwB0AGkAbgBvACkACgAgACAAIAAgACAAIAAgACAAcgBlAHQAdQByAG4ACgAgACAAIAAgAH0ACgAgACAAIAAgAHQAcgB5ACAAewAKACAAIAAgACAAIAAgACAAIABbAEkATwAuAEYAaQBsAGUAXQA6ADoAUgBlAHAAbABhAGMAZQAoACQAbwByAGkAZwBlAG4ALAAgACQAZABlAHMAdABpAG4AbwAsACAAJABuAHUAbABsACkACgAgACAAIAAgAH0AIABjAGEAdABjAGgAIAB7AAoAIAAgACAAIAAgACAAIAAgACQAcgBlAHMAcABhAGwAZABvACAAPQAgACIAJABkAGUAcwB0AGkAbgBvAC4AJAAoAFsARwB1AGkAZABdADoAOgBOAGUAdwBHAHUAaQBkACgAKQAuAFQAbwBTAHQAcgBpAG4AZwAoACcA" & _
+        "TgAnACkAKQAuAGIAYQBrACIACgAgACAAIAAgACAAIAAgACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AE0AbwB2AGUAKAAkAGQAZQBzAHQAaQBuAG8ALAAgACQAcgBlAHMAcABhAGwAZABvACkACgAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AE0AbwB2AGUAKAAkAG8AcgBpAGcAZQBuACwAIAAkAGQAZQBzAHQAaQBuAG8AKQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAFsASQBPAC4ARgBpAGwAZQBdADoAOgBEAGUAbABlAHQAZQAoACQAcgBlAHMAcABhAGwAZABvACkACgAgACAAIAAgACAAIAAgACAAfQAgAGMAYQB0AGMAaAAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABpAGYAIAAoAFsASQBPAC4ARgBpAGwAZQBdADoAOgBFAHgAaQBzAHQAcwAoACQAZABlAHMAdABpAG4AbwApACkAIAB7ACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AEQAZQBsAGUAdABlACgAJABkAGUAcwB0AGkAbgBvACkAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAg" & _
+        "ACAAaQBmACAAKABbAEkATwAuAEYAaQBsAGUAXQA6ADoARQB4AGkAcwB0AHMAKAAkAHIAZQBzAHAAYQBsAGQAbwApACkAIAB7ACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AE0AbwB2AGUAKAAkAHIAZQBzAHAAYQBsAGQAbwAsACAAJABkAGUAcwB0AGkAbgBvACkAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAdABoAHIAbwB3AAoAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgAH0ACgB9AAoACgB0AHIAeQAgAHsACgAgACAAIAAgAGkAZgAgACgAWwBzAHQAcgBpAG4AZwBdADoAOgBJAHMATgB1AGwAbABPAHIAVwBoAGkAdABlAFMAcABhAGMAZQAoACQAYQByAGMAaABpAHYAbwBJAG4AZABpAGMAZQApACAALQBvAHIAIAAtAG4AbwB0ACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AEUAeABpAHMAdABzACgAJABhAHIAYwBoAGkAdgBvAEkAbgBkAGkAYwBlACkAKQAgAHsACgAgACAAIAAgACAAIAAgACAAdABoAHIAbwB3ACAAIgBOAG8AIABlAHgAaQBzAHQAZQAgAGUAbAAgAO0AbgBkAGkAYwBlACAAcwBlAGwAZQBjAGMAaQBvAG4A" & _
+        "YQBkAG8AOgAgACQAYQByAGMAaABpAHYAbwBJAG4AZABpAGMAZQAiAAoAIAAgACAAIAB9AAoACgAgACAAIAAgACQAZQBuAHMAYQBtAGIAbABhAGoAZQBzACAAPQAgAFsAUwB5AHMAdABlAG0ALgBDAG8AbABsAGUAYwB0AGkAbwBuAHMALgBHAGUAbgBlAHIAaQBjAC4ATABpAHMAdABbAG8AYgBqAGUAYwB0AF0AXQA6ADoAbgBlAHcAKAApAAoAIAAgACAAIAAkAHYAaQBzAHQAbwBzACAAPQAgAFsAUwB5AHMAdABlAG0ALgBDAG8AbABsAGUAYwB0AGkAbwBuAHMALgBHAGUAbgBlAHIAaQBjAC4ASABhAHMAaABTAGUAdABbAHMAdAByAGkAbgBnAF0AXQA6ADoAbgBlAHcAKABbAFMAdAByAGkAbgBnAEMAbwBtAHAAYQByAGUAcgBdADoAOgBPAHIAZABpAG4AYQBsAEkAZwBuAG8AcgBlAEMAYQBzAGUAKQAKACAAIAAgACAAZgBvAHIAZQBhAGMAaAAgACgAJABsAGkAbgBlAGEAIABpAG4AIABbAEkATwAuAEYAaQBsAGUAXQA6ADoAUgBlAGEAZABMAGkAbgBlAHMAKAAkAGEAcgBjAGgAaQB2AG8ASQBuAGQAaQBjAGUALAAgAFsAVABlAHgAdAAu" & _
+        "AEUAbgBjAG8AZABpAG4AZwBdADoAOgBVAFQARgA4ACkAKQAgAHsACgAgACAAIAAgACAAIAAgACAAaQBmACAAKABDAGEAbgBjAGUAbABhAGMAaQBvAG4ALQBTAG8AbABpAGMAaQB0AGEAZABhACkAIAB7ACAAdABoAHIAbwB3ACAAWwBPAHAAZQByAGEAdABpAG8AbgBDAGEAbgBjAGUAbABlAGQARQB4AGMAZQBwAHQAaQBvAG4AXQA6ADoAbgBlAHcAKAApACAAfQAKACAAIAAgACAAIAAgACAAIABpAGYAIAAoAFsAcwB0AHIAaQBuAGcAXQA6ADoASQBzAE4AdQBsAGwATwByAFcAaABpAHQAZQBTAHAAYQBjAGUAKAAkAGwAaQBuAGUAYQApACAALQBvAHIAIAAkAGwAaQBuAGUAYQAuAFMAdABhAHIAdABzAFcAaQB0AGgAKAAnACMAJwApACkAIAB7ACAAYwBvAG4AdABpAG4AdQBlACAAfQAKACAAIAAgACAAIAAgACAAIAAkAHIAdQB0AGEAIAA9ACAAJABsAGkAbgBlAGEALgBTAHAAbABpAHQAKABbAGMAaABhAHIAXQA5ACkAWwAwAF0ALgBUAHIAaQBtACgAKQAKACAAIAAgACAAIAAgACAAIABpAGYAIAAoAFsASQBPAC4AUABhAHQAaABdADoA" & _
+        "OgBHAGUAdABFAHgAdABlAG4AcwBpAG8AbgAoACQAcgB1AHQAYQApAC4AVABvAEwAbwB3AGUAcgBJAG4AdgBhAHIAaQBhAG4AdAAoACkAIAAtAG4AZQAgACcALgBpAGEAbQAnACAALQBvAHIAIAAtAG4AbwB0ACAAJAB2AGkAcwB0AG8AcwAuAEEAZABkACgAJAByAHUAdABhACkAKQAgAHsAIABjAG8AbgB0AGkAbgB1AGUAIAB9AAoAIAAgACAAIAAgACAAIAAgAGkAZgAgACgALQBuAG8AdAAgAFsASQBPAC4ARgBpAGwAZQBdADoAOgBFAHgAaQBzAHQAcwAoACQAcgB1AHQAYQApACkAIAB7ACAAJABhAHYAaQBzAG8AcwArACsAOwAgAGMAbwBuAHQAaQBuAHUAZQAgAH0ACgAgACAAIAAgACAAIAAgACAAJAB0AGkAYwBrAHMAIAA9ACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AEcAZQB0AEwAYQBzAHQAVwByAGkAdABlAFQAaQBtAGUAVQB0AGMAKAAkAHIAdQB0AGEAKQAuAFQAaQBjAGsAcwAKACAAIAAgACAAIAAgACAAIAAkAGUAbgBzAGEAbQBiAGwAYQBqAGUAcwAuAEEAZABkACgAWwBwAHMAYwB1AHMAdABvAG0AbwBiAGoAZQBjAHQAXQBA" & _
+        "AHsAIABSAHUAdABhACAAPQAgACQAcgB1AHQAYQA7ACAAVABpAGMAawBzACAAPQAgACQAdABpAGMAawBzACAAfQApAAoAIAAgACAAIAB9AAoACgAgACAAIAAgACQAcwBhAGwAaQBkAGEAIAA9ACAAIgAkAGEAcgBjAGgAaQB2AG8ASQBuAGQAaQBjAGUALgB1AHMAbwBzACIACgAgACAAIAAgACQAYQBuAHQAZQByAGkAbwByAGUAcwAgAD0AIABAAHsAfQAKACAAIAAgACAAaQBmACAAKABbAEkATwAuAEYAaQBsAGUAXQA6ADoARQB4AGkAcwB0AHMAKAAkAHMAYQBsAGkAZABhACkAKQAgAHsACgAgACAAIAAgACAAIAAgACAAJABwAGEAZAByAGUAQQBjAHQAdQBhAGwAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACQAYgBsAG8AcQB1AGUAQQBjAHQAdQBhAGwAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACQAbABpAG4AZQBhAHMAVgBpAHMAdABhAHMAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgAGYAbwByAGUAYQBjAGgAIAAoACQAbABpAG4AZQBhACAAaQBuACAAWwBJAE8ALgBGAGkAbABlAF0A" & _
+        "OgA6AFIAZQBhAGQATABpAG4AZQBzACgAJABzAGEAbABpAGQAYQAsACAAWwBUAGUAeAB0AC4ARQBuAGMAbwBkAGkAbgBnAF0AOgA6AFUAVABGADgAKQApACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAJABsAGkAbgBlAGEALgBTAHQAYQByAHQAcwBXAGkAdABoACgAIgBBAGAAdAAiACkAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAcABhAHIAdABlAHMAIAA9ACAAJABsAGkAbgBlAGEALgBTAHAAbABpAHQAKABbAGMAaABhAHIAXQA5ACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAcABhAGQAcgBlAEEAYwB0AHUAYQBsACAAPQAgACQAbgB1AGwAbAAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKAAkAHAAYQByAHQAZQBzAC4ATABlAG4AZwB0AGgAIAAtAGcAZQAgADMAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg" & _
+        "ACAAIAAgACAAIAAgACAAJAByAHUAdABhAEEAbgB0AGUAcgBpAG8AcgAgAD0AIABGAHIAbwBtAC0AQgA2ADQAIAAkAHAAYQByAHQAZQBzAFsAMQBdAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJAB0AGkAYwBrAHMAQQBuAHQAZQByAGkAbwByACAAPQAgADAATAAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAWwBsAG8AbgBnAF0AOgA6AFQAcgB5AFAAYQByAHMAZQAoACQAcABhAHIAdABlAHMAWwAyAF0ALAAgAFsAcgBlAGYAXQAkAHQAaQBjAGsAcwBBAG4AdABlAHIAaQBvAHIAKQApACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABiAGwAbwBxAHUAZQBBAGMAdAB1AGEAbAAgAD0AIABbAFMAeQBzAHQAZQBtAC4AQwBvAGwAbABlAGMAdABpAG8AbgBzAC4ARwBlAG4AZQByAGkAYwAuAEwAaQBzAHQAWwBzAHQAcgBpAG4AZwBdAF0AOgA6AG4AZQB3ACgAKQAKACAA" & _
+        "IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABsAGkAbgBlAGEAcwBWAGkAcwB0AGEAcwAgAD0AIABbAFMAeQBzAHQAZQBtAC4AQwBvAGwAbABlAGMAdABpAG8AbgBzAC4ARwBlAG4AZQByAGkAYwAuAEgAYQBzAGgAUwBlAHQAWwBzAHQAcgBpAG4AZwBdAF0AOgA6AG4AZQB3ACgAWwBTAHQAcgBpAG4AZwBDAG8AbQBwAGEAcgBlAHIAXQA6ADoATwByAGQAaQBuAGEAbAApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGIAbABvAHEAdQBlAEEAYwB0AHUAYQBsAC4AQQBkAGQAKAAkAGwAaQBuAGUAYQApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABbAHYAbwBpAGQAXQAkAGwAaQBuAGUAYQBzAFYAaQBzAHQAYQBzAC4AQQBkAGQAKAAkAGwAaQBuAGUAYQApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAk" & _
+        "AGEAbgB0AGUAcgBpAG8AcgBlAHMAWwAkAHIAdQB0AGEAQQBuAHQAZQByAGkAbwByAF0AIAA9ACAAWwBwAHMAYwB1AHMAdABvAG0AbwBiAGoAZQBjAHQAXQBAAHsAIABUAGkAYwBrAHMAIAA9ACAAJAB0AGkAYwBrAHMAQQBuAHQAZQByAGkAbwByADsAIABMAGkAbgBlAGEAcwAgAD0AIAAkAGIAbABvAHEAdQBlAEEAYwB0AHUAYQBsACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABwAGEAZAByAGUAQQBjAHQAdQBhAGwAIAA9ACAAJAByAHUAdABhAEEAbgB0AGUAcgBpAG8AcgAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAfQAgAGMAYQB0AGMAaAAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAHAAYQBkAHIAZQBBAGMAdAB1AGEAbAAgAD0AIAAkAG4AdQBsAGwACgAgACAAIAAgACAAIAAgACAA" & _
+        "IAAgACAAIAAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0AIABlAGwAcwBlAGkAZgAgACgAJABuAHUAbABsACAALQBuAGUAIAAkAHAAYQBkAHIAZQBBAGMAdAB1AGEAbAAgAC0AYQBuAGQAIAAoACQAbABpAG4AZQBhAC4AUwB0AGEAcgB0AHMAVwBpAHQAaAAoACIAUgBgAHQAIgApACAALQBvAHIAIAAkAGwAaQBuAGUAYQAuAFMAdABhAHIAdABzAFcAaQB0AGgAKAAiAEUAYAB0ACIAKQApACkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABpAGYAIAAoACQAbABpAG4AZQBhAHMAVgBpAHMAdABhAHMALgBBAGQAZAAoACQAbABpAG4AZQBhACkAKQAgAHsAIAAkAGIAbABvAHEAdQBlAEEAYwB0AHUAYQBsAC4AQQBkAGQAKAAkAGwAaQBuAGUAYQApACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAfQAKAAoAIAAgACAAIAAkAHQAbwB0AGEAbABDAGEAbQBi" & _
+        "AGkAbwBzACAAPQAgADAACgAgACAAIAAgAGYAbwByAGUAYQBjAGgAIAAoACQAZQBuAHQAcgBhAGQAYQAgAGkAbgAgACQAZQBuAHMAYQBtAGIAbABhAGoAZQBzACkAIAB7AAoAIAAgACAAIAAgACAAIAAgACQAYQBuAHQAZQByAGkAbwByACAAPQAgACQAYQBuAHQAZQByAGkAbwByAGUAcwBbACQAZQBuAHQAcgBhAGQAYQAuAFIAdQB0AGEAXQAKACAAIAAgACAAIAAgACAAIABpAGYAIAAoACQAbgB1AGwAbAAgAC0AZQBxACAAJABhAG4AdABlAHIAaQBvAHIAIAAtAG8AcgAgACQAYQBuAHQAZQByAGkAbwByAC4AVABpAGMAawBzACAALQBuAGUAIAAkAGUAbgB0AHIAYQBkAGEALgBUAGkAYwBrAHMAKQAgAHsAIAAkAHQAbwB0AGEAbABDAGEAbQBiAGkAbwBzACsAKwAgAH0ACgAgACAAIAAgAH0ACgAKACAAIAAgACAARwB1AGEAcgBkAGEAcgAtAFAAcgBvAGcAcgBlAHMAbwAgADAAIAAkAGUAbgBzAGEAbQBiAGwAYQBqAGUAcwAuAEMAbwB1AG4AdAAgADAAIAAkAHQAbwB0AGEAbABDAGEAbQBiAGkAbwBzAAoAIAAgACAAIABpAGYAIAAoACQA" & _
+        "dABvAHQAYQBsAEMAYQBtAGIAaQBvAHMAIAAtAGcAdAAgADAAKQAgAHsACgAgACAAIAAgACAAIAAgACAAJABhAHAAcAAgAD0AIABOAGUAdwAtAE8AYgBqAGUAYwB0ACAALQBDAG8AbQBPAGIAagBlAGMAdAAgAEkAbgB2AGUAbgB0AG8AcgAuAEEAcABwAGwAaQBjAGEAdABpAG8AbgAKACAAIAAgACAAIAAgACAAIAAkAGEAcABwAC4AVgBpAHMAaQBiAGwAZQAgAD0AIAAkAGYAYQBsAHMAZQAKACAAIAAgACAAIAAgACAAIAAkAGEAcABwAC4AUwBpAGwAZQBuAHQATwBwAGUAcgBhAHQAaQBvAG4AIAA9ACAAJAB0AHIAdQBlAAoAIAAgACAAIAB9AAoACgAgACAAIAAgACQAdABlAG0AcABvAHIAYQBsACAAPQAgACIAJABzAGEAbABpAGQAYQAuACQAKABbAEcAdQBpAGQAXQA6ADoATgBlAHcARwB1AGkAZAAoACkALgBUAG8AUwB0AHIAaQBuAGcAKAAnAE4AJwApACkALgB0AG0AcAAiAAoAIAAgACAAIAAkAHcAcgBpAHQAZQByACAAPQAgAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABJAE8ALgBTAHQAcgBlAGEAbQBXAHIAaQB0AGUAcgAoACQAdABl" & _
+        "AG0AcABvAHIAYQBsACwAIAAkAGYAYQBsAHMAZQAsACAAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAAVABlAHgAdAAuAFUAVABGADgARQBuAGMAbwBkAGkAbgBnACgAJABmAGEAbABzAGUAKQApACkACgAgACAAIAAgAHQAcgB5ACAAewAKACAAIAAgACAAIAAgACAAIAAkAHcAcgBpAHQAZQByAC4AVwByAGkAdABlAEwAaQBuAGUAKAAiACMAVQBTAE8AUwAyAGAAdAAkACgAWwBEAGEAdABlAFQAaQBtAGUAXQA6ADoATgBvAHcALgBUAG8AUwB0AHIAaQBuAGcAKAAnAHkAeQB5AHkALQBNAE0ALQBkAGQAIABIAEgAOgBtAG0AOgBzAHMAJwApACkAIgApAAoAIAAgACAAIAAgACAAIAAgACQAYwBhAG0AYgBpAGEAZABvAHMAIAA9ACAAMAAKACAAIAAgACAAIAAgACAAIABmAG8AcgBlAGEAYwBoACAAKAAkAGUAbgB0AHIAYQBkAGEAIABpAG4AIAAkAGUAbgBzAGEAbQBiAGwAYQBqAGUAcwApACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAQwBhAG4AYwBlAGwAYQBjAGkAbwBuAC0AUwBvAGwAaQBjAGkAdABhAGQAYQApACAA" & _
+        "ewAgAHQAaAByAG8AdwAgAFsATwBwAGUAcgBhAHQAaQBvAG4AQwBhAG4AYwBlAGwAZQBkAEUAeABjAGUAcAB0AGkAbwBuAF0AOgA6AG4AZQB3ACgAKQAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGEAbgB0AGUAcgBpAG8AcgAgAD0AIAAkAGEAbgB0AGUAcgBpAG8AcgBlAHMAWwAkAGUAbgB0AHIAYQBkAGEALgBSAHUAdABhAF0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIABpAGYAIAAoACQAbgB1AGwAbAAgAC0AbgBlACAAJABhAG4AdABlAHIAaQBvAHIAIAAtAGEAbgBkACAAJABhAG4AdABlAHIAaQBvAHIALgBUAGkAYwBrAHMAIAAtAGUAcQAgACQAZQBuAHQAcgBhAGQAYQAuAFQAaQBjAGsAcwApACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAZgBvAHIAZQBhAGMAaAAgACgAJABsAGkAbgBlAGEAQQBuAHQAZQByAGkAbwByACAAaQBuACAAJABhAG4AdABlAHIAaQBvAHIALgBMAGkAbgBlAGEAcwApACAAewAgACQAdwByAGkAdABlAHIALgBXAHIAaQB0AGUATABpAG4AZQAoACQAbABpAG4AZQBh" & _
+        "AEEAbgB0AGUAcgBpAG8AcgApACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0AIABlAGwAcwBlACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJAB3AHIAaQB0AGUAcgAuAFcAcgBpAHQAZQBMAGkAbgBlACgAIgBBAGAAdAAkACgAQgA2ADQAIAAkAGUAbgB0AHIAYQBkAGEALgBSAHUAdABhACkAYAB0ACQAKAAkAGUAbgB0AHIAYQBkAGEALgBUAGkAYwBrAHMAKQAiACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAZABvAGMAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGgAaQBqAG8AcwBWAGkAcwB0AG8AcwAgAD0AIABbAFMAeQBzAHQAZQBtAC4AQwBvAGwAbABlAGMAdABpAG8AbgBzAC4ARwBlAG4AZQByAGkAYwAuAEgAYQBzAGgAUwBlAHQAWwBzAHQAcgBpAG4AZwBdAF0AOgA6AG4AZQB3ACgAWwBTAHQAcgBpAG4AZwBDAG8AbQBwAGEAcgBlAHIAXQA6ADoATwByAGQAaQBuAGEAbABJAGcAbgBvAHIAZQBDAGEAcwBlACkACgAgACAA" & _
+        "IAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAHQAcgB5ACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGQAbwBjACAAPQAgACQAYQBwAHAALgBEAG8AYwB1AG0AZQBuAHQAcwAuAE8AcABlAG4AKAAkAGUAbgB0AHIAYQBkAGEALgBSAHUAdABhACwAIAAkAGYAYQBsAHMAZQApAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGYAbwByAGUAYQBjAGgAIAAoACQAcgBlAGYAIABpAG4AIAAkAGQAbwBjAC4ARgBpAGwAZQAuAFIAZQBmAGUAcgBlAG4AYwBlAGQARgBpAGwAZQBEAGUAcwBjAHIAaQBwAHQAbwByAHMAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB0AHIAeQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAaABpAGoAbwAgAD0AIABbAHMAdAByAGkAbgBnAF0AJAByAGUAZgAuAEYAdQBsAGwARgBpAGwAZQBOAGEAbQBlAAoAIAAgACAAIAAg" & _
+        "ACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGUAeAB0ACAAPQAgAFsASQBPAC4AUABhAHQAaABdADoAOgBHAGUAdABFAHgAdABlAG4AcwBpAG8AbgAoACQAaABpAGoAbwApAC4AVABvAEwAbwB3AGUAcgBJAG4AdgBhAHIAaQBhAG4AdAAoACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAKAAkAGUAeAB0ACAALQBuAGUAIAAnAC4AaQBwAHQAJwAgAC0AYQBuAGQAIAAkAGUAeAB0ACAALQBuAGUAIAAnAC4AaQBhAG0AJwApACAALQBvAHIAIAAtAG4AbwB0ACAAJABoAGkAagBvAHMAVgBpAHMAdABvAHMALgBBAGQAZAAoACQAaABpAGoAbwApACkAIAB7ACAAYwBvAG4AdABpAG4AdQBlACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKAAkAHIAZQBmAC4AUgBlAGYAZQByAGUAbgBjAGUATQBpAHMAcwBpAG4AZwAgAC0AbwByACAAJAByAGUAZgAuAFIA" & _
+        "ZQBmAGUAcgBlAG4AYwBlAEkAbgB0AGUAcgBuAGEAbABOAGEAbQBlAEQAaQBmAGYAZQByAGUAbgB0ACkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAYQB2AGkAcwBvAHMAKwArAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAdwByAGkAdABlAHIALgBXAHIAaQB0AGUATABpAG4AZQAoACIARQBgAHQAJAAoAEIANgA0ACAAKAAkAGUAbgB0AHIAYQBkAGEALgBSAHUAdABhACsAJwAgAC0APgAgACcAKwAkAGgAaQBqAG8AKwAnADoAIAByAGUAZgBlAHIAZQBuAGMAaQBhACAAbgBvACAAcgBlAHMAdQBlAGwAdABhACcAKQApACIAKQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAfQAgAGUAbABzAGUAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAg" & _
+        "ACQAdwByAGkAdABlAHIALgBXAHIAaQB0AGUATABpAG4AZQAoACIAUgBgAHQAJAAoAEIANgA0ACAAJABlAG4AdAByAGEAZABhAC4AUgB1AHQAYQApAGAAdAAkACgAQgA2ADQAIAAkAGgAaQBqAG8AKQAiACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9ACAAYwBhAHQAYwBoACAAewAgACQAYQB2AGkAcwBvAHMAKwArACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9ACAAYwBhAHQAYwBoACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGEAdgBpAHMAbwBzACsAKwAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAHcAcgBpAHQAZQByAC4AVwByAGkAdABlAEwAaQBuAGUAKAAiAEUAYAB0ACQAKABCADYANAAgACgA" & _
+        "JABlAG4AdAByAGEAZABhAC4AUgB1AHQAYQArACcAIAAtAD4AIAAnACsAJABfAC4ARQB4AGMAZQBwAHQAaQBvAG4ALgBNAGUAcwBzAGEAZwBlACkAKQAiACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0AIABmAGkAbgBhAGwAbAB5ACAAewAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABpAGYAIAAoACQAbgB1AGwAbAAgAC0AbgBlACAAJABkAG8AYwApACAAewAgAHQAcgB5ACAAewAgACQAZABvAGMALgBDAGwAbwBzAGUAKAAkAHQAcgB1AGUAKQAgAH0AIABjAGEAdABjAGgAIAB7AH0AIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGkAZgAgACgAJABuAHUAbABsACAALQBuAGUAIAAkAGQAbwBjACkAIAB7ACAAdAByAHkAIAB7ACAAWwBSAHUAbgB0AGkAbQBlAC4ASQBuAHQAZQByAG8AcABTAGUAcgB2AGkAYwBlAHMALgBNAGEAcgBzAGgAYQBsAF0AOgA6AEYAaQBuAGEAbABSAGUAbABlAGEAcwBlAEMAbwBtAE8AYgBqAGUAYwB0ACgAJABkAG8AYwAp" & _
+        "ACAAfAAgAE8AdQB0AC0ATgB1AGwAbAAgAH0AIABjAGEAdABjAGgAIAB7AH0AIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAZABvAGMAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAGMAYQBtAGIAaQBhAGQAbwBzACsAKwAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAHAAcgBvAGMAZQBzAGEAZABvAHMAKwArAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAARwB1AGEAcgBkAGEAcgAtAFAAcgBvAGcAcgBlAHMAbwAgACQAcAByAG8AYwBlAHMAYQBkAG8AcwAgACQAZQBuAHMAYQBtAGIAbABhAGoAZQBzAC4AQwBvAHUAbgB0ACAAJABjAGEAbQBiAGkAYQBkAG8AcwAgACQAdABvAHQAYQBsAEMAYQBtAGIAaQBvAHMACgAgACAAIAAgACAAIAAgACAAfQAKACAAIAAgACAAfQAgAGYAaQBuAGEAbABsAHkAIAB7AAoAIAAgACAAIAAgACAA" & _
+        "IAAgACQAdwByAGkAdABlAHIALgBEAGkAcwBwAG8AcwBlACgAKQAKACAAIAAgACAAfQAKAAoAIAAgACAAIABpAGYAIAAoAEMAYQBuAGMAZQBsAGEAYwBpAG8AbgAtAFMAbwBsAGkAYwBpAHQAYQBkAGEAKQAgAHsAIAB0AGgAcgBvAHcAIABbAE8AcABlAHIAYQB0AGkAbwBuAEMAYQBuAGMAZQBsAGUAZABFAHgAYwBlAHAAdABpAG8AbgBdADoAOgBuAGUAdwAoACkAIAB9AAoAIAAgACAAIABSAGUAZQBtAHAAbABhAHoAYQByAC0AUwBlAGcAdQByAG8AIAAkAHQAZQBtAHAAbwByAGEAbAAgACQAcwBhAGwAaQBkAGEACgAgACAAIAAgACQAdABlAG0AcABvAHIAYQBsACAAPQAgACQAbgB1AGwAbAAKACAAIAAgACAARwB1AGEAcgBkAGEAcgAtAFAAcgBvAGcAcgBlAHMAbwAgACQAZQBuAHMAYQBtAGIAbABhAGoAZQBzAC4AQwBvAHUAbgB0ACAAJABlAG4AcwBhAG0AYgBsAGEAagBlAHMALgBDAG8AdQBuAHQAIAAkAHQAbwB0AGEAbABDAGEAbQBiAGkAbwBzACAAJAB0AG8AdABhAGwAQwBhAG0AYgBpAG8AcwAKAH0AIABjAGEAdABjAGgAIABb" & _
+        "AE8AcABlAHIAYQB0AGkAbwBuAEMAYQBuAGMAZQBsAGUAZABFAHgAYwBlAHAAdABpAG8AbgBdACAAewAKACAAIAAgACAAJABjAG8AZABpAGcAbwBTAGEAbABpAGQAYQAgAD0AIAAyAAoAfQAgAGMAYQB0AGMAaAAgAHsACgAgACAAIAAgAFsAQwBvAG4AcwBvAGwAZQBdADoAOgBFAHIAcgBvAHIALgBXAHIAaQB0AGUATABpAG4AZQAoACQAXwAuAEUAeABjAGUAcAB0AGkAbwBuAC4ATQBlAHMAcwBhAGcAZQApAAoAIAAgACAAIABpAGYAIAAoACQAYQByAGMAaABpAHYAbwBFAHIAcgBvAHIAKQAgAHsACgAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7ACAAWwBJAE8ALgBGAGkAbABlAF0AOgA6AFcAcgBpAHQAZQBBAGwAbABUAGUAeAB0ACgAJABhAHIAYwBoAGkAdgBvAEUAcgByAG8AcgAsACAAJABfAC4ARQB4AGMAZQBwAHQAaQBvAG4ALgBUAG8AUwB0AHIAaQBuAGcAKAApACwAIABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAApACAAfQAgAGMAYQB0AGMAaAAgAHsAfQAKACAAIAAgACAAfQAKACAAIAAgACAA" & _
+        "JABjAG8AZABpAGcAbwBTAGEAbABpAGQAYQAgAD0AIAAxAAoAfQAgAGYAaQBuAGEAbABsAHkAIAB7AAoAIAAgACAAIABpAGYAIAAoACQAbgB1AGwAbAAgAC0AbgBlACAAJABhAHAAcAApACAAewAKACAAIAAgACAAIAAgACAAIAB0AHIAeQAgAHsAIAAkAGEAcABwAC4AUQB1AGkAdAAoACkAIAB9ACAAYwBhAHQAYwBoACAAewB9AAoAIAAgACAAIAAgACAAIAAgAHQAcgB5ACAAewAgAFsAUgB1AG4AdABpAG0AZQAuAEkAbgB0AGUAcgBvAHAAUwBlAHIAdgBpAGMAZQBzAC4ATQBhAHIAcwBoAGEAbABdADoAOgBSAGUAbABlAGEAcwBlAEMAbwBtAE8AYgBqAGUAYwB0ACgAJABhAHAAcAApACAAfAAgAE8AdQB0AC0ATgB1AGwAbAAgAH0AIABjAGEAdABjAGgAIAB7AH0ACgAgACAAIAAgAH0ACgAgACAAIAAgAGkAZgAgACgAJABuAHUAbABsACAALQBuAGUAIAAkAHQAZQBtAHAAbwByAGEAbAAgAC0AYQBuAGQAIABbAEkATwAuAEYAaQBsAGUAXQA6ADoARQB4AGkAcwB0AHMAKAAkAHQAZQBtAHAAbwByAGEAbAApACkAIAB7AAoAIAAgACAAIAAg" & _
+        "ACAAIAAgAHQAcgB5ACAAewAgAFsASQBPAC4ARgBpAGwAZQBdADoAOgBEAGUAbABlAHQAZQAoACQAdABlAG0AcABvAHIAYQBsACkAIAB9ACAAYwBhAHQAYwBoACAAewB9AAoAIAAgACAAIAB9AAoAfQAKAAoAZQB4AGkAdAAgACQAYwBvAGQAaQBnAG8AUwBhAGwAaQBkAGEACgA="
+
+    Private procesoRelaciones As System.Diagnostics.Process
+    Private relojProcesoRelaciones As System.Windows.Forms.Timer
+    Private relojOcultarProgreso As System.Windows.Forms.Timer
+    Private carpetaRelacionesActiva As String = ""
+    Private archivoProgresoRelaciones As String = ""
+    Private archivoCancelarRelaciones As String = ""
+    Private archivoErrorRelaciones As String = ""
+
+    Private Function ProcesoRelacionesActivo() As Boolean
+        Try
+            Return procesoRelaciones IsNot Nothing AndAlso Not procesoRelaciones.HasExited
+        Catch
+            Return False
+        End Try
+    End Function
+
+    Private Sub LanzarRelacionesEnSegundoInventor()
+        If ProcesoRelacionesActivo() Then
+            lblEstado.Text = "Las relaciones ya se estan actualizando. Puedes seguir trabajando."
+            Return
+        End If
+        Try
+            carpetaRelacionesActiva = CarpetaIndice()
+            Dim archivoIndice As String = _archivoIndexadoEnCurso
+            If archivoIndice = "" OrElse Not System.IO.File.Exists(archivoIndice) Then archivoIndice = ArchivoIndiceActual()
+            If Not System.IO.File.Exists(archivoIndice) Then Throw New System.Exception("No existe el indice que se acaba de crear.")
+
+            archivoProgresoRelaciones = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "BuscadorRelaciones_" & System.Guid.NewGuid().ToString("N") & ".txt")
+            archivoCancelarRelaciones = archivoProgresoRelaciones & ".cancelar"
+            archivoErrorRelaciones = archivoProgresoRelaciones & ".error"
+            Try
+                If System.IO.File.Exists(archivoProgresoRelaciones) Then System.IO.File.Delete(archivoProgresoRelaciones)
+                If System.IO.File.Exists(archivoCancelarRelaciones) Then System.IO.File.Delete(archivoCancelarRelaciones)
+                If System.IO.File.Exists(archivoErrorRelaciones) Then System.IO.File.Delete(archivoErrorRelaciones)
+            Catch
+            End Try
+
+            Dim inicio As New System.Diagnostics.ProcessStartInfo()
+            inicio.FileName = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.Windows), "System32\WindowsPowerShell\v1.0\powershell.exe")
+            inicio.Arguments = "-NoProfile -NonInteractive -STA -EncodedCommand " & CODIGO_RELACIONES
+            inicio.UseShellExecute = False
+            inicio.CreateNoWindow = True
+            inicio.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+            inicio.EnvironmentVariables("BUSCADOR_ARCHIVO_INDICE") = archivoIndice
+            inicio.EnvironmentVariables("BUSCADOR_ARCHIVO_PROGRESO") = archivoProgresoRelaciones
+            inicio.EnvironmentVariables("BUSCADOR_ARCHIVO_CANCELAR") = archivoCancelarRelaciones
+            inicio.EnvironmentVariables("BUSCADOR_ARCHIVO_ERROR") = archivoErrorRelaciones
+            procesoRelaciones = System.Diagnostics.Process.Start(inicio)
+
+            If relojProcesoRelaciones Is Nothing Then
+                relojProcesoRelaciones = New System.Windows.Forms.Timer()
+                relojProcesoRelaciones.Interval = 500
+                AddHandler relojProcesoRelaciones.Tick, AddressOf ComprobarRelaciones
+            End If
+            relojProcesoRelaciones.Start()
+            btnIndexar.Enabled = False : btnActualizar.Enabled = False
+            btnBuscar.Enabled = True : btnCancelar.Enabled = True
+            HabilitarAccionesResultados(False)
+            barraProgreso.Style = System.Windows.Forms.ProgressBarStyle.Blocks
+            barraProgreso.Minimum = 0 : barraProgreso.Maximum = 100 : barraProgreso.Value = 0
+            barraProgreso.Visible = True
+            lblPorcentaje.Text = "0 %" : lblPorcentaje.Visible = True
+            lblEstado.Text = "Relaciones: 0 %. Revisando ensamblajes nuevos o modificados. Puedes seguir trabajando."
+        Catch ex As System.Exception
+            btnIndexar.Enabled = True : btnActualizar.Enabled = True
+            btnBuscar.Enabled = True : btnCancelar.Enabled = False
+            lblEstado.Text = "No se pudo iniciar la actualizacion de relaciones: " & ex.Message
+            OcultarProgresoEnBreve()
+        End Try
+    End Sub
+
+    Private Sub ComprobarRelaciones(sender As Object, e As System.EventArgs)
+        If procesoRelaciones Is Nothing Then Return
+        Try
+            If System.IO.File.Exists(archivoProgresoRelaciones) Then
+                Dim textoProgreso As String = LeerArchivoCompartido(archivoProgresoRelaciones)
+                Dim p As String() = textoProgreso.Split("|"c)
+                Dim hechos As Integer : Dim total As Integer
+                Dim cambiados As Integer : Dim totalCambios As Integer
+                If p.Length >= 2 AndAlso Integer.TryParse(p(0), hechos) AndAlso Integer.TryParse(p(1), total) Then
+                    If p.Length >= 4 Then
+                        Integer.TryParse(p(2), cambiados) : Integer.TryParse(p(3), totalCambios)
+                    End If
+                    Dim porcentaje As Integer = If(totalCambios > 0, System.Math.Min(100, CInt(System.Math.Floor(CDbl(cambiados) * 100.0 / CDbl(totalCambios)))), 100)
+                    barraProgreso.Minimum = 0 : barraProgreso.Maximum = 100 : barraProgreso.Value = porcentaje
+                    lblPorcentaje.Text = porcentaje.ToString() & " %" : lblPorcentaje.Visible = True
+                    lblEstado.Text = "Relaciones: " & porcentaje.ToString() & " % (" & cambiados.ToString() & " de " & totalCambios.ToString() & " IAM nuevos o modificados). Puedes seguir trabajando."
+                End If
+            End If
+        Catch
+        End Try
+        If ProcesoRelacionesActivo() Then Return
+
+        relojProcesoRelaciones.Stop()
+        Dim codigo As Integer = -1
+        Try : codigo = procesoRelaciones.ExitCode : Catch : End Try
+        Try : procesoRelaciones.Dispose() : Catch : End Try
+        procesoRelaciones = Nothing
+        btnIndexar.Enabled = True : btnActualizar.Enabled = True
+        btnBuscar.Enabled = True : btnCancelar.Enabled = False
+        HabilitarAccionesResultados(True)
+        cancelar = False
+        If codigo = 0 Then
+            barraProgreso.Maximum = 100 : barraProgreso.Value = 100
+            lblPorcentaje.Text = "100 %" : lblPorcentaje.Visible = True
+            lblEstado.Text = "Relaciones actualizadas: 100 %."
+            If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(carpetaRelacionesActiva, True)
+        ElseIf codigo = 2 Then
+            lblEstado.Text = "Actualizacion de relaciones cancelada."
+        Else
+            Dim detalle As String = ""
+            Try
+                If System.IO.File.Exists(archivoErrorRelaciones) Then detalle = System.IO.File.ReadAllText(archivoErrorRelaciones).Trim()
+            Catch
+            End Try
+            If detalle.Contains(vbCr) Then detalle = detalle.Substring(0, detalle.IndexOf(vbCr))
+            If detalle.Contains(vbLf) Then detalle = detalle.Substring(0, detalle.IndexOf(vbLf))
+            If detalle.Length > 220 Then detalle = detalle.Substring(0, 220) & "..."
+            lblEstado.Text = If(detalle = "", "No se pudieron completar las relaciones.", "Error de relaciones: " & detalle)
+        End If
+        LimpiarArchivosTemporalesRelaciones()
+        OcultarProgresoEnBreve()
+    End Sub
+
+    Private Function LeerArchivoCompartido(ruta As String) As String
+        Using flujo As New System.IO.FileStream(ruta, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite Or System.IO.FileShare.Delete)
+            Using lector As New System.IO.StreamReader(flujo, System.Text.Encoding.UTF8)
+                Return lector.ReadToEnd()
+            End Using
+        End Using
+    End Function
+
+    Private Sub SolicitarCancelacionRelaciones()
+        If Not ProcesoRelacionesActivo() Then Return
+        Try
+            System.IO.File.WriteAllText(archivoCancelarRelaciones, "cancelar")
+        Catch
+        End Try
+    End Sub
+
+    Private Sub LimpiarArchivosTemporalesRelaciones()
+        Try
+            If archivoProgresoRelaciones <> "" AndAlso System.IO.File.Exists(archivoProgresoRelaciones) Then System.IO.File.Delete(archivoProgresoRelaciones)
+        Catch
+        End Try
+        Try
+            If archivoCancelarRelaciones <> "" AndAlso System.IO.File.Exists(archivoCancelarRelaciones) Then System.IO.File.Delete(archivoCancelarRelaciones)
+        Catch
+        End Try
+        Try
+            If archivoErrorRelaciones <> "" AndAlso System.IO.File.Exists(archivoErrorRelaciones) Then System.IO.File.Delete(archivoErrorRelaciones)
+        Catch
+        End Try
+    End Sub
+
+    Private Sub OcultarProgresoEnBreve()
+        If relojOcultarProgreso Is Nothing Then
+            relojOcultarProgreso = New System.Windows.Forms.Timer()
+            relojOcultarProgreso.Interval = 1500
+            AddHandler relojOcultarProgreso.Tick, AddressOf OcultarProgresoFinal
+        End If
+        relojOcultarProgreso.Stop() : relojOcultarProgreso.Start()
+    End Sub
+
+    Private Sub OcultarProgresoFinal(sender As Object, e As System.EventArgs)
+        relojOcultarProgreso.Stop()
+        barraProgreso.Visible = False : lblPorcentaje.Visible = False
+    End Sub
+
+    Private Sub CerrarProcesoRelaciones()
+        SolicitarCancelacionRelaciones()
+        If relojProcesoRelaciones IsNot Nothing Then relojProcesoRelaciones.Stop() : relojProcesoRelaciones.Dispose()
+        If relojOcultarProgreso IsNot Nothing Then relojOcultarProgreso.Stop() : relojOcultarProgreso.Dispose()
+        If procesoRelaciones IsNot Nothing Then
+            Try : procesoRelaciones.Dispose() : Catch : End Try
+            procesoRelaciones = Nothing
+        End If
+    End Sub
 
     Private oApp As Inventor.Application
 
+    ' --- Controles de la cabecera ---
+    Private cabecera As System.Windows.Forms.Panel
+    Private lblTitulo As System.Windows.Forms.Label
+    Private lblSincronizado As System.Windows.Forms.Label
+    Private lblPestana As System.Windows.Forms.Label
+    Private btnMinimizar As System.Windows.Forms.Button
+    Private btnMaximizar As System.Windows.Forms.Button
+    Private btnCerrar As System.Windows.Forms.Button
+
+    ' --- Controles del indice ---
     Private txtRuta As System.Windows.Forms.TextBox
     Private btnExaminar As System.Windows.Forms.Button
     Private cboUnidad As System.Windows.Forms.ComboBox
@@ -58,22 +318,31 @@ Public Class BuscadorFicherosForm
     Private btnIndexar As System.Windows.Forms.Button
     Private btnActualizar As System.Windows.Forms.Button
     Private lblIndiceInfo As System.Windows.Forms.Label
+
+    ' --- Busqueda y filtros ---
     Private txtCodigo As System.Windows.Forms.TextBox
+    Private btnLimpiar As System.Windows.Forms.Button
+    Private btnBuscar As System.Windows.Forms.Button
     Private rdoTodos As System.Windows.Forms.RadioButton
     Private rdoPiezas As System.Windows.Forms.RadioButton
     Private rdoEnsamblajes As System.Windows.Forms.RadioButton
     Private rdoPlanos As System.Windows.Forms.RadioButton
-    Private btnBuscar As System.Windows.Forms.Button
+    Private lblResultados As System.Windows.Forms.Label
+
+    ' --- Resultados y acciones ---
+    Private lstResultados As System.Windows.Forms.ListView
+    Private panelUsos As ConsultaUsosPanel
     Private btnCancelar As System.Windows.Forms.Button
     Private btnAbrir As System.Windows.Forms.Button
     Private btnAbrirCarpeta As System.Windows.Forms.Button
     Private btnCopiar As System.Windows.Forms.Button
     Private btnMover As System.Windows.Forms.Button
     Private btnCopiarRuta As System.Windows.Forms.Button
-    Private panelUsos As ConsultaUsosPanel
     Private btnBorrar As System.Windows.Forms.Button
-    Private lstResultados As System.Windows.Forms.ListView
+    Private lblSeleccion As System.Windows.Forms.Label
     Private lblEstado As System.Windows.Forms.Label
+    Private barraProgreso As System.Windows.Forms.ProgressBar
+    Private lblPorcentaje As System.Windows.Forms.Label
 
     ' Menu contextual creado por reflexion. No se declaran ContextMenu,
     ' ContextMenuStrip, MenuItem ni ToolStripMenuItem de forma directa para
@@ -91,6 +360,8 @@ Public Class BuscadorFicherosForm
     Private cancelar As Boolean = False
     Private _cuentaIndexada As Integer = 0
     Private _progreso As Integer = 0
+    Private _totalIndexar As Integer = 0
+    Private _faseIndexacion As String = ""
     Private _nPiezas As Integer = 0
     Private _nEnsam As Integer = 0
     Private _nPlanos As Integer = 0
@@ -109,25 +380,216 @@ Public Class BuscadorFicherosForm
     Private _codigoBusquedaActual As String = ""
     Private _resultadoTruncadoActual As Boolean = False
 
+    ' Reloj que retrasa la busqueda automatica mientras el usuario teclea.
+    Private relojBusqueda As System.Windows.Forms.Timer
+
     ' Tema visual elegido por el usuario: Sistema, Normal u Oscuro.
-    Private _temaSeleccionado As String = "Sistema"
+    Private _temaSeleccionado As String = "Oscuro"
+
+    ' Paleta activa. Se rellena en AplicarTemaActual y la reparte AplicarTemaAControl.
+    Private _cFondo As Object
+    Private _cCabecera As Object
+    Private _cTarjeta As Object
+    Private _cAcciones As Object
+    Private _cEntrada As Object
+    Private _cLista As Object
+    Private _cBoton As Object
+    Private _cTexto As Object
+    Private _cTenue As Object
+    Private _cBorde As Object
+    Private _cAcento As Object
+    Private _cTextoAcento As Object
+    Private _cCerrar As Object
 
     Public Sub New(app As Inventor.Application)
         oApp = app
         InicializarComponentes()
+        Try
+            System.Windows.Forms.Application.AddMessageFilter(Me)
+        Catch
+        End Try
     End Sub
 
-    ' Escape cierra siempre el buscador, incluso cuando el foco esta dentro
-    ' del cuadro de busqueda o de la lista de resultados.
+    ' ================= TECLADO =================
+    ' Inventor se queda con Intro y Escape cuando el formulario no es modal, asi
+    ' que se cablean por cuatro vias distintas. Ninguna es imprescindible: la
+    ' busqueda se lanza sola al teclear y la ventana se cierra con el boton X.
+
     Protected Overrides Function ProcessCmdKey(ByRef msg As System.Windows.Forms.Message, _
             keyData As System.Windows.Forms.Keys) As Boolean
-        If keyData = System.Windows.Forms.Keys.Escape Then
-            If HayIndexacionActiva() Then cancelar = True
-            Me.Close()
+        Dim tecla As System.Windows.Forms.Keys = keyData And System.Windows.Forms.Keys.KeyCode
+        If tecla = System.Windows.Forms.Keys.Escape Then
+            CerrarBuscador()
             Return True
+        End If
+        If tecla = System.Windows.Forms.Keys.Enter OrElse tecla = System.Windows.Forms.Keys.Return Then
+            If txtCodigo IsNot Nothing AndAlso txtCodigo.Focused Then
+                EjecutarBusquedaDesdeCodigo()
+                Return True
+            End If
         End If
         Return MyBase.ProcessCmdKey(msg, keyData)
     End Function
+
+    Protected Overrides Function ProcessDialogKey(keyData As System.Windows.Forms.Keys) As Boolean
+        Dim tecla As System.Windows.Forms.Keys = keyData And System.Windows.Forms.Keys.KeyCode
+        If tecla = System.Windows.Forms.Keys.Escape Then
+            CerrarBuscador()
+            Return True
+        End If
+        If tecla = System.Windows.Forms.Keys.Enter OrElse tecla = System.Windows.Forms.Keys.Return Then
+            If txtCodigo IsNot Nothing AndAlso txtCodigo.Focused Then
+                EjecutarBusquedaDesdeCodigo()
+                Return True
+            End If
+        End If
+        Return MyBase.ProcessDialogKey(keyData)
+    End Function
+
+    Public Function PreFilterMessage(ByRef mensaje As System.Windows.Forms.Message) As Boolean _
+            Implements System.Windows.Forms.IMessageFilter.PreFilterMessage
+        Const WM_KEYDOWN As Integer = &H100
+        If mensaje.Msg <> WM_KEYDOWN Then Return False
+        If Not Me.Visible OrElse Me.IsDisposed Then Return False
+        Dim codigo As Long = mensaje.WParam.ToInt64()
+        If codigo = CLng(System.Windows.Forms.Keys.Escape) Then
+            If Me.ContainsFocus Then
+                CerrarBuscador()
+                Return True
+            End If
+            Return False
+        End If
+        If codigo <> CLng(System.Windows.Forms.Keys.Enter) Then Return False
+        If txtCodigo Is Nothing OrElse Not txtCodigo.Focused Then Return False
+        EjecutarBusquedaDesdeCodigo()
+        Return True
+    End Function
+
+    Private Sub OnFormularioKeyDown(sender As Object, e As System.Windows.Forms.KeyEventArgs)
+        If e.KeyCode = System.Windows.Forms.Keys.Escape Then
+            e.Handled = True : e.SuppressKeyPress = True
+            CerrarBuscador()
+        ElseIf e.KeyCode = System.Windows.Forms.Keys.Enter Then
+            If txtCodigo IsNot Nothing AndAlso txtCodigo.Focused Then
+                e.Handled = True : e.SuppressKeyPress = True
+                EjecutarBusquedaDesdeCodigo()
+            End If
+        End If
+    End Sub
+
+    Private Sub OnCodigoPreviewKeyDown(sender As Object, e As System.Windows.Forms.PreviewKeyDownEventArgs)
+        If e.KeyCode = System.Windows.Forms.Keys.Enter OrElse e.KeyCode = System.Windows.Forms.Keys.Return Then
+            e.IsInputKey = True
+        End If
+    End Sub
+
+    Private Sub OnCodigoKeyDown(sender As Object, e As System.Windows.Forms.KeyEventArgs)
+        If e.KeyCode = System.Windows.Forms.Keys.Enter OrElse e.KeyCode = System.Windows.Forms.Keys.Return Then
+            EjecutarBusquedaDesdeCodigo()
+            e.Handled = True
+            e.SuppressKeyPress = True
+        ElseIf e.KeyCode = System.Windows.Forms.Keys.Escape Then
+            e.Handled = True
+            e.SuppressKeyPress = True
+            CerrarBuscador()
+        End If
+    End Sub
+
+    Private Sub EjecutarBusquedaDesdeCodigo()
+        If txtCodigo Is Nothing OrElse btnBuscar Is Nothing Then Return
+        If Not btnBuscar.Enabled Then Return
+        DetenerRelojBusqueda()
+        OnBuscar(btnBuscar, System.EventArgs.Empty)
+    End Sub
+
+    Private Sub CerrarBuscador()
+        If HayIndexacionActiva() Then cancelar = True
+        Try
+            Me.Close()
+        Catch
+        End Try
+    End Sub
+
+    ' ================= BUSQUEDA AUTOMATICA =================
+    ' Es la via principal: no depende de que Inventor suelte la tecla Intro.
+    Private Sub DetenerRelojBusqueda()
+        If relojBusqueda IsNot Nothing Then relojBusqueda.Stop()
+    End Sub
+
+    Private Sub OnCodigoTextChanged(sender As Object, e As System.EventArgs)
+        If btnLimpiar IsNot Nothing Then btnLimpiar.Visible = (txtCodigo.Text.Length > 0)
+        If relojBusqueda Is Nothing Then
+            relojBusqueda = New System.Windows.Forms.Timer()
+            relojBusqueda.Interval = RETARDO_BUSQUEDA
+            AddHandler relojBusqueda.Tick, AddressOf OnBusquedaAutomatica
+        End If
+        relojBusqueda.Stop()
+        If txtCodigo.Text.Trim().Length >= MINIMO_BUSQUEDA Then relojBusqueda.Start()
+    End Sub
+
+    Private Sub OnBusquedaAutomatica(sender As Object, e As System.EventArgs)
+        relojBusqueda.Stop()
+        Dim codigo As String = txtCodigo.Text.Trim()
+        If codigo.Length < MINIMO_BUSQUEDA Then Return
+        If String.Equals(codigo, _codigoBusquedaActual, System.StringComparison.OrdinalIgnoreCase) Then Return
+        If Not btnBuscar.Enabled Then Return
+        If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice())
+        PedirDatos(codigo)
+    End Sub
+
+    Private Sub OnLimpiarBusqueda(sender As Object, e As System.EventArgs)
+        DetenerRelojBusqueda()
+        txtCodigo.Text = ""
+        txtCodigo.Select()
+    End Sub
+
+    ' ================= VENTANA SIN BORDES =================
+    Private Sub OnArrastrarVentana(sender As Object, e As System.Windows.Forms.MouseEventArgs)
+        If e.Button <> System.Windows.Forms.MouseButtons.Left Then Return
+        If Me.WindowState = System.Windows.Forms.FormWindowState.Maximized Then Return
+        Const WM_NCLBUTTONDOWN As Integer = &HA1
+        Const HTCAPTION As Integer = 2
+        Try
+            ReleaseCapture()
+            SendMessage(Me.Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0)
+        Catch
+        End Try
+    End Sub
+
+    Private Sub OnRedimensionarVentana(sender As Object, e As System.Windows.Forms.MouseEventArgs)
+        If e.Button <> System.Windows.Forms.MouseButtons.Left Then Return
+        Const WM_NCLBUTTONDOWN As Integer = &HA1
+        Const HTBOTTOMRIGHT As Integer = 17
+        Try
+            ReleaseCapture()
+            SendMessage(Me.Handle, WM_NCLBUTTONDOWN, HTBOTTOMRIGHT, 0)
+        Catch
+        End Try
+    End Sub
+
+    Private Sub OnCabeceraDobleClic(sender As Object, e As System.Windows.Forms.MouseEventArgs)
+        AlternarMaximizado()
+    End Sub
+
+    Private Sub OnMinimizarVentana(sender As Object, e As System.EventArgs)
+        Me.WindowState = System.Windows.Forms.FormWindowState.Minimized
+    End Sub
+
+    Private Sub OnMaximizarVentana(sender As Object, e As System.EventArgs)
+        AlternarMaximizado()
+    End Sub
+
+    Private Sub AlternarMaximizado()
+        If Me.WindowState = System.Windows.Forms.FormWindowState.Maximized Then
+            Me.WindowState = System.Windows.Forms.FormWindowState.Normal
+        Else
+            Me.WindowState = System.Windows.Forms.FormWindowState.Maximized
+        End If
+    End Sub
+
+    Private Sub OnCerrarVentana(sender As Object, e As System.EventArgs)
+        CerrarBuscador()
+    End Sub
 
     Private Function CarpetaConfig() As String
         Return System.IO.Path.Combine( _
@@ -135,35 +597,143 @@ Public Class BuscadorFicherosForm
             "BuscadorInventor")
     End Function
 
+    ' ================= INTERFAZ =================
     Private Sub InicializarComponentes()
-        Me.Text = "Buscar ficheros en la red (con indice) v5.7"
-        Me.Width = 1120
-        Me.Height = 790
+        Me.Text = "Buscador CAD - Indice de busqueda v7.6"
+        Me.Width = 1320
+        Me.Height = 742
         Me.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen
+        Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None
+        Me.ShowInTaskbar = True
         Me.KeyPreview = True
 
-        Dim anchTLR As System.Windows.Forms.AnchorStyles = _
-            System.Windows.Forms.AnchorStyles.Top _
-            Or System.Windows.Forms.AnchorStyles.Left _
+        CrearCabecera()
+        CrearBarraIndice()
+        CrearCajaBusqueda()
+        CrearFiltros()
+        CrearListaResultados()
+        CrearPanelUsos()
+        CrearProgreso()
+        CrearBarraAcciones()
+        CrearBarraInferior()
+
+        AddHandler Me.FormClosing, AddressOf OnFormularioClosing
+        AddHandler Me.Shown, AddressOf OnFormularioShown
+        AddHandler Me.Activated, AddressOf OnFormularioActivated
+        AddHandler Me.KeyDown, AddressOf OnFormularioKeyDown
+        AddHandler txtIndice.Validated, AddressOf OnIndiceValidado
+
+        Me.AcceptButton = btnBuscar
+
+        CargarAjustes()
+        panelUsos.CambiarCarpeta(CarpetaIndice())
+        AplicarTemaActual()
+        ActualizarInfoIndice()
+        ActualizarSeleccion()
+    End Sub
+
+    Private Function Etiqueta(texto As String, x As Integer, y As Integer, w As Integer) _
+            As System.Windows.Forms.Label
+        Dim l As New System.Windows.Forms.Label()
+        l.Text = texto : l.Left = x : l.Top = y : l.Width = w
+        Return l
+    End Function
+
+    Private Function EtiquetaTenue(texto As String, x As Integer, y As Integer, w As Integer) _
+            As System.Windows.Forms.Label
+        Dim l As System.Windows.Forms.Label = Etiqueta(texto, x, y, w)
+        l.Tag = "TENUE"
+        Return l
+    End Function
+
+    Private Function Boton(texto As String, x As Integer, y As Integer, w As Integer, _
+            h As Integer, anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Button
+        Dim b As New System.Windows.Forms.Button()
+        b.Text = texto : b.Left = x : b.Top = y : b.Width = w : b.Height = h : b.Anchor = anclaje
+        b.TabStop = False
+        Return b
+    End Function
+
+    Private Function Tarjeta(x As Integer, y As Integer, w As Integer, h As Integer, _
+            etiqueta As String, anclaje As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Panel
+        Dim p As New System.Windows.Forms.Panel()
+        p.Left = x : p.Top = y : p.Width = w : p.Height = h
+        p.Tag = etiqueta : p.Anchor = anclaje
+        Return p
+    End Function
+
+    Private Sub CrearCabecera()
+        Dim anclaBarra As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left _
             Or System.Windows.Forms.AnchorStyles.Right
-        Dim anchTR As System.Windows.Forms.AnchorStyles = _
+        Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
             System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
 
-        ' --- Fila 1: carpeta a indexar ---
-        Me.Controls.Add(Etiqueta("Carpeta a indexar:", 12, 15, 130))
-        txtRuta = New System.Windows.Forms.TextBox()
-        txtRuta.Left = 145 : txtRuta.Top = 12 : txtRuta.Width = 650 : txtRuta.Anchor = anchTLR
-        Me.Controls.Add(txtRuta)
-        btnExaminar = Boton("Examinar...", 820, 10, 115, 26, anchTR)
-        AddHandler btnExaminar.Click, AddressOf OnExaminarRuta
-        Me.Controls.Add(btnExaminar)
+        cabecera = Tarjeta(0, 0, 1320, 44, "CABECERA", anclaBarra)
+        AddHandler cabecera.MouseDown, AddressOf OnArrastrarVentana
+        AddHandler cabecera.MouseDoubleClick, AddressOf OnCabeceraDobleClic
 
-        ' --- Fila 2: unidad rapida ---
-        Me.Controls.Add(Etiqueta("Unidad:", 12, 47, 130))
+        lblTitulo = Etiqueta("BUSCADOR CAD", 20, 13, 160)
+        lblTitulo.Tag = "TITULO"
+        AddHandler lblTitulo.MouseDown, AddressOf OnArrastrarVentana
+        cabecera.Controls.Add(lblTitulo)
+
+        cabecera.Controls.Add(EtiquetaTenue("v7.6", 182, 16, 40))
+
+        lblSincronizado = Etiqueta("   Indice sincronizado", 232, 10, 210)
+        lblSincronizado.Height = 24
+        lblSincronizado.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        lblSincronizado.Tag = "PILDORA"
+        cabecera.Controls.Add(lblSincronizado)
+
+        lblPestana = Etiqueta("INDICE DE BUSQUEDA", 570, 14, 200)
+        lblPestana.Tag = "PESTANA"
+        AddHandler lblPestana.MouseDown, AddressOf OnArrastrarVentana
+        cabecera.Controls.Add(lblPestana)
+
+        btnMinimizar = Boton("–", 1196, 10, 30, 24, anclaDerecha)
+        AddHandler btnMinimizar.Click, AddressOf OnMinimizarVentana
+        cabecera.Controls.Add(btnMinimizar)
+
+        btnMaximizar = Boton("□", 1230, 10, 30, 24, anclaDerecha)
+        AddHandler btnMaximizar.Click, AddressOf OnMaximizarVentana
+        cabecera.Controls.Add(btnMaximizar)
+
+        btnCerrar = Boton("X", 1264, 10, 30, 24, anclaDerecha)
+        btnCerrar.Tag = "CERRAR"
+        AddHandler btnCerrar.Click, AddressOf OnCerrarVentana
+        cabecera.Controls.Add(btnCerrar)
+
+        ' El selector de tema se conserva por compatibilidad con los ajustes
+        ' guardados, pero la v7.6 va siempre en oscuro.
+        cboTema = New System.Windows.Forms.ComboBox()
+        cboTema.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
+        cboTema.Items.Add("Sistema") : cboTema.Items.Add("Normal") : cboTema.Items.Add("Oscuro")
+        cboTema.Left = 0 : cboTema.Top = 0 : cboTema.Width = 80
+        cboTema.Visible = False
+        AddHandler cboTema.SelectedIndexChanged, AddressOf OnTemaChanged
+        cabecera.Controls.Add(cboTema)
+
+        Me.Controls.Add(cabecera)
+    End Sub
+
+    Private Sub CrearBarraIndice()
+        Dim anclaBarra As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Dim anclaIzquierda As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left
+        Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
+
+        Dim tarjeta As System.Windows.Forms.Panel = Tarjeta(24, 56, 1272, 64, "TARJETA", anclaBarra)
+        tarjeta.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+
+        tarjeta.Controls.Add(EtiquetaTenue("UNIDAD", 14, 9, 70))
         cboUnidad = New System.Windows.Forms.ComboBox()
-        cboUnidad.Left = 145 : cboUnidad.Top = 44 : cboUnidad.Width = 280
+        cboUnidad.Left = 14 : cboUnidad.Top = 27 : cboUnidad.Width = 120
         cboUnidad.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-        cboUnidad.Items.Add("Ruta de red (" & RUTA_RED & ")")
+        cboUnidad.Items.Add("Red")
         Try
             For Each unidad As String In System.Environment.GetLogicalDrives()
                 cboUnidad.Items.Add(unidad)
@@ -171,85 +741,113 @@ Public Class BuscadorFicherosForm
         Catch
         End Try
         AddHandler cboUnidad.SelectedIndexChanged, AddressOf OnUnidadChanged
-        Me.Controls.Add(cboUnidad)
+        tarjeta.Controls.Add(cboUnidad)
 
-        ' --- Selector de tema visual ---
-        Me.Controls.Add(Etiqueta("Tema:", 500, 47, 48))
-        cboTema = New System.Windows.Forms.ComboBox()
-        cboTema.Left = 550 : cboTema.Top = 44 : cboTema.Width = 185
-        cboTema.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList
-        cboTema.Items.Add("Sistema")
-        cboTema.Items.Add("Normal")
-        cboTema.Items.Add("Oscuro")
-        AddHandler cboTema.SelectedIndexChanged, AddressOf OnTemaChanged
-        Me.Controls.Add(cboTema)
+        tarjeta.Controls.Add(EtiquetaTenue("CARPETA A INDEXAR", 148, 9, 160))
+        txtRuta = New System.Windows.Forms.TextBox()
+        txtRuta.Left = 148 : txtRuta.Top = 27 : txtRuta.Width = 300 : txtRuta.Anchor = anclaIzquierda
+        tarjeta.Controls.Add(txtRuta)
+        btnExaminar = Boton("...", 452, 26, 34, 22, anclaIzquierda)
+        AddHandler btnExaminar.Click, AddressOf OnExaminarRuta
+        tarjeta.Controls.Add(btnExaminar)
 
-        ' --- Fila 3: carpeta del indice ---
-        Me.Controls.Add(Etiqueta("Carpeta del indice:", 12, 81, 130))
+        tarjeta.Controls.Add(EtiquetaTenue("CARPETA DEL INDICE", 500, 9, 160))
         txtIndice = New System.Windows.Forms.TextBox()
-        txtIndice.Left = 145 : txtIndice.Top = 78 : txtIndice.Width = 650 : txtIndice.Anchor = anchTLR
+        txtIndice.Left = 500 : txtIndice.Top = 27 : txtIndice.Width = 320 : txtIndice.Anchor = anclaIzquierda
         AddHandler txtIndice.TextChanged, AddressOf OnIndiceCarpetaChanged
-        Me.Controls.Add(txtIndice)
-        btnExaminarIndice = Boton("Examinar...", 820, 76, 115, 26, anchTR)
+        tarjeta.Controls.Add(txtIndice)
+        btnExaminarIndice = Boton("...", 824, 26, 34, 22, anclaIzquierda)
         AddHandler btnExaminarIndice.Click, AddressOf OnExaminarIndice
-        Me.Controls.Add(btnExaminarIndice)
+        tarjeta.Controls.Add(btnExaminarIndice)
 
-        ' --- Fila 4: opciones de indexado ---
+        lblIndiceInfo = EtiquetaTenue("", 872, 9, 210)
+        tarjeta.Controls.Add(lblIndiceInfo)
+
         chkPartNumber = New System.Windows.Forms.CheckBox()
-        chkPartNumber.Text = "Indexar tambien Nº de pieza y descripcion (mas lento)"
-        chkPartNumber.Left = 145 : chkPartNumber.Top = 110 : chkPartNumber.Width = 350
-        Me.Controls.Add(chkPartNumber)
+        chkPartNumber.Text = "Metadatos de iProperties"
+        chkPartNumber.Left = 872 : chkPartNumber.Top = 26 : chkPartNumber.Width = 200
+        chkPartNumber.Checked = False
+        chkPartNumber.Enabled = False
+        tarjeta.Controls.Add(chkPartNumber)
 
-        ' --- Fila 5: indexar + actualizar + info ---
-        btnIndexar = Boton("Indexar ahora", 145, 138, 120, 28, _
-            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left)
+        btnIndexar = Boton("Reindexar", 1090, 25, 85, 26, anclaDerecha)
         AddHandler btnIndexar.Click, AddressOf OnIndexar
-        Me.Controls.Add(btnIndexar)
+        tarjeta.Controls.Add(btnIndexar)
 
-        btnActualizar = Boton("Actualizar", 275, 138, 120, 28, _
-            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left)
+        btnActualizar = Boton("Actualizar", 1181, 25, 85, 26, anclaDerecha)
         AddHandler btnActualizar.Click, AddressOf OnActualizar
-        Me.Controls.Add(btnActualizar)
+        tarjeta.Controls.Add(btnActualizar)
 
-        lblIndiceInfo = Etiqueta("", 405, 143, 520)
-        Me.Controls.Add(lblIndiceInfo)
+        Me.Controls.Add(tarjeta)
+    End Sub
 
-        ' --- Fila 6: codigo + buscar ---
-        Me.Controls.Add(Etiqueta("Codigo a buscar:", 12, 179, 130))
+    Private Sub CrearCajaBusqueda()
+        Dim anclaBarra As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Left _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
+
+        Dim caja As System.Windows.Forms.Panel = Tarjeta(24, 130, 1272, 46, "BUSQUEDA", anclaBarra)
+        caja.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+
+        caja.Controls.Add(EtiquetaTenue("CODIGO", 14, 16, 60))
+
         txtCodigo = New System.Windows.Forms.TextBox()
-        txtCodigo.Left = 145 : txtCodigo.Top = 176 : txtCodigo.Width = 650 : txtCodigo.Anchor = anchTLR
+        txtCodigo.Left = 78 : txtCodigo.Top = 11 : txtCodigo.Width = 1000
+        txtCodigo.Anchor = anclaBarra
+        txtCodigo.BorderStyle = System.Windows.Forms.BorderStyle.None
+        AddHandler txtCodigo.TextChanged, AddressOf OnCodigoTextChanged
+        AddHandler txtCodigo.PreviewKeyDown, AddressOf OnCodigoPreviewKeyDown
         AddHandler txtCodigo.KeyDown, AddressOf OnCodigoKeyDown
-        Me.Controls.Add(txtCodigo)
-        btnBuscar = Boton("Buscar", 820, 174, 115, 26, anchTR)
-        AddHandler btnBuscar.Click, AddressOf OnBuscar
-        Me.Controls.Add(btnBuscar)
+        caja.Controls.Add(txtCodigo)
 
-        ' --- Fila 7: filtro por tipo ---
+        btnLimpiar = Boton("X", 1086, 11, 26, 22, anclaDerecha)
+        btnLimpiar.Visible = False
+        AddHandler btnLimpiar.Click, AddressOf OnLimpiarBusqueda
+        caja.Controls.Add(btnLimpiar)
+
+        btnBuscar = Boton("Buscar", 1120, 9, 140, 26, anclaDerecha)
+        AddHandler btnBuscar.Click, AddressOf OnBuscar
+        caja.Controls.Add(btnBuscar)
+
+        Me.Controls.Add(caja)
+    End Sub
+
+    Private Sub CrearFiltros()
         rdoTodos = New System.Windows.Forms.RadioButton()
         rdoTodos.Text = "Todos" : rdoTodos.Checked = True
-        rdoTodos.Left = 145 : rdoTodos.Top = 208 : rdoTodos.Width = 70
+        rdoTodos.Left = 26 : rdoTodos.Top = 186 : rdoTodos.Width = 90
         AddHandler rdoTodos.CheckedChanged, AddressOf OnFiltroTipoChanged
         Me.Controls.Add(rdoTodos)
+
         rdoPiezas = New System.Windows.Forms.RadioButton()
-        rdoPiezas.Text = "Piezas (.ipt)"
-        rdoPiezas.Left = 220 : rdoPiezas.Top = 208 : rdoPiezas.Width = 110
+        rdoPiezas.Text = ".ipt  Piezas"
+        rdoPiezas.Left = 120 : rdoPiezas.Top = 186 : rdoPiezas.Width = 120
         AddHandler rdoPiezas.CheckedChanged, AddressOf OnFiltroTipoChanged
         Me.Controls.Add(rdoPiezas)
+
         rdoEnsamblajes = New System.Windows.Forms.RadioButton()
-        rdoEnsamblajes.Text = "Ensamblajes (.iam)"
-        rdoEnsamblajes.Left = 335 : rdoEnsamblajes.Top = 208 : rdoEnsamblajes.Width = 150
+        rdoEnsamblajes.Text = ".iam  Ensamblajes"
+        rdoEnsamblajes.Left = 248 : rdoEnsamblajes.Top = 186 : rdoEnsamblajes.Width = 170
         AddHandler rdoEnsamblajes.CheckedChanged, AddressOf OnFiltroTipoChanged
         Me.Controls.Add(rdoEnsamblajes)
+
         rdoPlanos = New System.Windows.Forms.RadioButton()
-        rdoPlanos.Text = "Planos (.idw)"
-        rdoPlanos.Left = 490 : rdoPlanos.Top = 208 : rdoPlanos.Width = 160
+        rdoPlanos.Text = ".idw  Planos"
+        rdoPlanos.Left = 424 : rdoPlanos.Top = 186 : rdoPlanos.Width = 140
         AddHandler rdoPlanos.CheckedChanged, AddressOf OnFiltroTipoChanged
         Me.Controls.Add(rdoPlanos)
 
-        ' --- Lista de resultados (ordenable) ---
+        lblResultados = EtiquetaTenue("Sin busqueda", 980, 188, 316)
+        lblResultados.Anchor = System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
+        Me.Controls.Add(lblResultados)
+    End Sub
+
+    Private Sub CrearListaResultados()
         lstResultados = New System.Windows.Forms.ListView()
-        lstResultados.Left = 12 : lstResultados.Top = 238
-        lstResultados.Width = 1080 : lstResultados.Height = 210
+        lstResultados.Left = 24 : lstResultados.Top = 212
+        lstResultados.Width = 856 : lstResultados.Height = 380
         lstResultados.View = System.Windows.Forms.View.Details
         lstResultados.FullRowSelect = True
         lstResultados.MultiSelect = True
@@ -259,10 +857,10 @@ Public Class BuscadorFicherosForm
             Or System.Windows.Forms.AnchorStyles.Bottom _
             Or System.Windows.Forms.AnchorStyles.Left _
             Or System.Windows.Forms.AnchorStyles.Right
-        lstResultados.Columns.Add("Nombre", 220)
-        lstResultados.Columns.Add("Tipo", 70)
-        lstResultados.Columns.Add("Modificado", 130)
-        lstResultados.Columns.Add("Ruta", 650)
+        lstResultados.Columns.Add("CODIGO Y NOMBRE DEL FICHERO", 360)
+        lstResultados.Columns.Add("FORMATO", 80)
+        lstResultados.Columns.Add("MODIFICADO", 130)
+        lstResultados.Columns.Add("RUTA COMPARTIDA", 265)
         AddHandler lstResultados.DoubleClick, AddressOf OnAbrir
         AddHandler lstResultados.ColumnClick, AddressOf OnColumnClick
         AddHandler lstResultados.KeyDown, AddressOf OnResultadosKeyDown
@@ -270,84 +868,113 @@ Public Class BuscadorFicherosForm
         AddHandler lstResultados.MouseDown, AddressOf OnResultadosMouseDown
         CrearMenuContextualResultados()
         Me.Controls.Add(lstResultados)
-
-        ' --- Estado + acciones sobre resultados ---
-        panelUsos = New ConsultaUsosPanel(oApp)
-        panelUsos.Left = 12 : panelUsos.Top = 458
-        panelUsos.Width = 1080 : panelUsos.Height = 180
-        panelUsos.Anchor = System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right
-        Me.Controls.Add(panelUsos)
-
-        lblEstado = Etiqueta("Listo.", 12, 650, 850)
-        lblEstado.Anchor = System.Windows.Forms.AnchorStyles.Bottom _
-            Or System.Windows.Forms.AnchorStyles.Left _
-            Or System.Windows.Forms.AnchorStyles.Right
-        Me.Controls.Add(lblEstado)
-
-        btnCancelar = Boton("Cancelar", 12, 682, 95, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left)
-        btnCancelar.Enabled = False
-        AddHandler btnCancelar.Click, AddressOf OnCancelar
-        Me.Controls.Add(btnCancelar)
-
-
-        btnCopiarRuta = Boton("Copiar ruta", 335, 682, 115, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnCopiarRuta.Click, AddressOf OnCopiarRuta
-        Me.Controls.Add(btnCopiarRuta)
-
-        btnCopiar = Boton("Copiar fichero", 457, 682, 125, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnCopiar.Click, AddressOf OnCopiarFicheros
-        Me.Controls.Add(btnCopiar)
-
-        btnMover = Boton("Mover", 589, 682, 115, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnMover.Click, AddressOf OnMoverFicheros
-        Me.Controls.Add(btnMover)
-
-        btnBorrar = Boton("Borrar", 711, 682, 105, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnBorrar.Click, AddressOf OnBorrarFicheros
-        Me.Controls.Add(btnBorrar)
-
-        btnAbrirCarpeta = Boton("Abrir carpeta", 823, 682, 135, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnAbrirCarpeta.Click, AddressOf OnAbrirCarpeta
-        Me.Controls.Add(btnAbrirCarpeta)
-
-        btnAbrir = Boton("Abrir", 965, 682, 133, 32, _
-            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right)
-        AddHandler btnAbrir.Click, AddressOf OnAbrir
-        Me.Controls.Add(btnAbrir)
-
-        Me.AcceptButton = btnBuscar
-
-        ' Guardar ajustes al salir y colocar el cursor directamente en el codigo.
-        AddHandler Me.FormClosing, AddressOf OnFormularioClosing
-        AddHandler Me.Shown, AddressOf OnFormularioShown
-        AddHandler Me.Activated, AddressOf OnFormularioActivated
-        AddHandler txtIndice.Validated, AddressOf OnIndiceValidado
-
-        CargarAjustes()
-        AplicarTemaActual()
-        ActualizarInfoIndice()
     End Sub
 
-    ' --- Helpers de creacion de controles ---
-    Private Function Etiqueta(texto As String, x As Integer, y As Integer, w As Integer) _
-            As System.Windows.Forms.Label
-        Dim l As New System.Windows.Forms.Label()
-        l.Text = texto : l.Left = x : l.Top = y : l.Width = w
-        Return l
-    End Function
+    Private Sub CrearPanelUsos()
+        panelUsos = New ConsultaUsosPanel(oApp)
+        panelUsos.Left = 892 : panelUsos.Top = 212
+        panelUsos.Width = 404 : panelUsos.Height = 380
+        panelUsos.Anchor = System.Windows.Forms.AnchorStyles.Top _
+            Or System.Windows.Forms.AnchorStyles.Bottom _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Me.Controls.Add(panelUsos)
+    End Sub
 
-    Private Function Boton(texto As String, x As Integer, y As Integer, w As Integer, _
-            h As Integer, anchor As System.Windows.Forms.AnchorStyles) As System.Windows.Forms.Button
-        Dim b As New System.Windows.Forms.Button()
-        b.Text = texto : b.Left = x : b.Top = y : b.Width = w : b.Height = h : b.Anchor = anchor
-        Return b
-    End Function
+    Private Sub CrearProgreso()
+        barraProgreso = New System.Windows.Forms.ProgressBar()
+        barraProgreso.Left = 24 : barraProgreso.Top = 600
+        barraProgreso.Width = 1200 : barraProgreso.Height = 14
+        barraProgreso.Minimum = 0 : barraProgreso.Maximum = 100
+        barraProgreso.Anchor = System.Windows.Forms.AnchorStyles.Bottom _
+            Or System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right
+        barraProgreso.Visible = False
+        Me.Controls.Add(barraProgreso)
+
+        lblPorcentaje = EtiquetaTenue("0 %", 1232, 598, 64)
+        lblPorcentaje.Height = 18
+        lblPorcentaje.Anchor = System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right
+        lblPorcentaje.Visible = False
+        Me.Controls.Add(lblPorcentaje)
+
+        lblEstado = Etiqueta("Listo.", 24, 622, 1272)
+        lblEstado.Anchor = System.Windows.Forms.AnchorStyles.Bottom _
+            Or System.Windows.Forms.AnchorStyles.Left Or System.Windows.Forms.AnchorStyles.Right
+        Me.Controls.Add(lblEstado)
+    End Sub
+
+    Private Sub CrearBarraAcciones()
+        Dim anclaBarra As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Top Or System.Windows.Forms.AnchorStyles.Right
+
+        Dim acciones As System.Windows.Forms.Panel = Tarjeta(24, 648, 1272, 64, "ACCIONES", anclaBarra)
+        acciones.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+
+        lblSeleccion = Etiqueta("Ningun fichero seleccionado", 14, 11, 340)
+        acciones.Controls.Add(lblSeleccion)
+        acciones.Controls.Add(EtiquetaTenue( _
+            "Intro: abrir      Ctrl+C: copiar ruta      Supr: borrar", 14, 34, 400))
+
+        btnCancelar = Boton("Cancelar", 393, 17, 95, 30, anclaDerecha)
+        btnCancelar.Enabled = False
+        AddHandler btnCancelar.Click, AddressOf OnCancelar
+        acciones.Controls.Add(btnCancelar)
+
+        btnCopiarRuta = Boton("Copiar ruta", 496, 17, 110, 30, anclaDerecha)
+        AddHandler btnCopiarRuta.Click, AddressOf OnCopiarRuta
+        acciones.Controls.Add(btnCopiarRuta)
+
+        btnCopiar = Boton("Copiar fichero", 614, 17, 125, 30, anclaDerecha)
+        AddHandler btnCopiar.Click, AddressOf OnCopiarFicheros
+        acciones.Controls.Add(btnCopiar)
+
+        btnMover = Boton("Mover", 747, 17, 90, 30, anclaDerecha)
+        AddHandler btnMover.Click, AddressOf OnMoverFicheros
+        acciones.Controls.Add(btnMover)
+
+        btnBorrar = Boton("Borrar", 845, 17, 90, 30, anclaDerecha)
+        AddHandler btnBorrar.Click, AddressOf OnBorrarFicheros
+        acciones.Controls.Add(btnBorrar)
+
+        btnAbrirCarpeta = Boton("Explorar carpeta", 943, 17, 140, 30, anclaDerecha)
+        AddHandler btnAbrirCarpeta.Click, AddressOf OnAbrirCarpeta
+        acciones.Controls.Add(btnAbrirCarpeta)
+
+        btnAbrir = Boton("Abrir en Inventor", 1091, 17, 165, 30, anclaDerecha)
+        btnAbrir.Tag = "ACENTO"
+        AddHandler btnAbrir.Click, AddressOf OnAbrir
+        acciones.Controls.Add(btnAbrir)
+
+        Me.Controls.Add(acciones)
+    End Sub
+
+    Private Sub CrearBarraInferior()
+        Dim anclaBarra As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Left _
+            Or System.Windows.Forms.AnchorStyles.Right
+        Dim anclaDerecha As System.Windows.Forms.AnchorStyles = _
+            System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right
+
+        Dim inferior As System.Windows.Forms.Panel = Tarjeta(0, 716, 1320, 26, "ESTADO", anclaBarra)
+        inferior.Controls.Add(EtiquetaTenue("ESC   Cerrar", 24, 6, 110))
+        inferior.Controls.Add(EtiquetaTenue("INTRO   Abrir", 144, 6, 115))
+        inferior.Controls.Add(EtiquetaTenue("CTRL+C   Copiar ruta", 268, 6, 165))
+        inferior.Controls.Add(EtiquetaTenue("SUPR   Borrar", 442, 6, 120))
+
+        Dim lblTipos As System.Windows.Forms.Label = EtiquetaTenue("IPT / IAM / IDW", 1050, 6, 120)
+        lblTipos.Anchor = anclaDerecha
+        inferior.Controls.Add(lblTipos)
+
+        Dim lblGrip As System.Windows.Forms.Label = EtiquetaTenue("///", 1290, 6, 26)
+        lblGrip.Anchor = anclaDerecha
+        lblGrip.Cursor = System.Windows.Forms.Cursors.SizeNWSE
+        AddHandler lblGrip.MouseDown, AddressOf OnRedimensionarVentana
+        inferior.Controls.Add(lblGrip)
+
+        Me.Controls.Add(inferior)
+    End Sub
 
     ' Crea el menu que aparece al pulsar el boton derecho sobre los resultados.
     ' Se instancia por reflexion para que iLogic no tenga que resolver en
@@ -379,9 +1006,9 @@ Public Class BuscadorFicherosForm
             mnuBorrar = CrearElementoMenuReflexion(tipoItem, _
                 "Borrar", New System.EventHandler(AddressOf OnBorrarFicheros))
             mnuAbrirCarpeta = CrearElementoMenuReflexion(tipoItem, _
-                "Abrir carpeta", New System.EventHandler(AddressOf OnAbrirCarpeta))
+                "Explorar carpeta", New System.EventHandler(AddressOf OnAbrirCarpeta))
             mnuAbrir = CrearElementoMenuReflexion(tipoItem, _
-                "Abrir", New System.EventHandler(AddressOf OnAbrir))
+                "Abrir en Inventor", New System.EventHandler(AddressOf OnAbrir))
 
             AgregarElementoMenuReflexion(menuResultados, mnuCopiarRuta)
             AgregarElementoMenuReflexion(menuResultados, mnuCopiarFichero)
@@ -528,7 +1155,7 @@ Public Class BuscadorFicherosForm
     End Sub
 
     Private Function HayIndexacionActiva() As Boolean
-        Return relacionesEnCurso OrElse (hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive)
+        Return (hiloTrabajo IsNot Nothing AndAlso hiloTrabajo.IsAlive) OrElse ProcesoRelacionesActivo()
     End Function
 
     Private Function BloquearAccionSiIndexa() As Boolean
@@ -548,8 +1175,6 @@ Public Class BuscadorFicherosForm
     Private Sub CargarAjustes()
         Dim ruta As String = RUTA_DEFECTO
         Dim indice As String = RUTA_INDICES
-        Dim pn As Boolean = False
-        Dim tema As String = "Sistema"
         Try
             Dim a As String = ArchivoAjustes()
             If System.IO.File.Exists(a) Then
@@ -558,36 +1183,34 @@ Public Class BuscadorFicherosForm
                 ' Conservar la ruta elegida aunque la unidad o la red no esten
                 ' disponibles temporalmente al abrir el formulario.
                 If ls.Length >= 2 AndAlso ls(1).Trim() <> "" Then indice = ls(1).Trim()
-                If ls.Length >= 3 Then pn = (ls(2).Trim() = "1")
-                If ls.Length >= 4 AndAlso ls(3).Trim() <> "" Then tema = ls(3).Trim()
             End If
         Catch
         End Try
 
         txtRuta.Text = ruta
         txtIndice.Text = indice
-        chkPartNumber.Checked = pn
+        chkPartNumber.Checked = False
 
-        _temaSeleccionado = NormalizarTema(tema)
-        If cboTema IsNot Nothing Then
-            cboTema.SelectedItem = _temaSeleccionado
-            If cboTema.SelectedIndex < 0 Then cboTema.SelectedIndex = 0
-        End If
+        _temaSeleccionado = "Oscuro"
+        If cboTema IsNot Nothing Then cboTema.SelectedItem = "Oscuro"
+        ActualizarPildoraSincronizado()
     End Sub
 
     Private Sub GuardarAjustes()
         Try
             System.IO.Directory.CreateDirectory(CarpetaConfig())
-            Dim tema As String = _temaSeleccionado
-            If cboTema IsNot Nothing AndAlso cboTema.SelectedIndex >= 0 Then
-                tema = cboTema.SelectedItem.ToString()
-            End If
             System.IO.File.WriteAllText(ArchivoAjustes(), _
                 txtRuta.Text.Trim() & vbCrLf & txtIndice.Text.Trim() & vbCrLf & _
-                If(chkPartNumber.Checked, "1", "0") & vbCrLf & _
-                NormalizarTema(tema) & vbCrLf)
+                "0" & vbCrLf & NormalizarTema(_temaSeleccionado) & vbCrLf)
         Catch
         End Try
+    End Sub
+
+    Private Sub ActualizarPildoraSincronizado()
+        If lblSincronizado Is Nothing OrElse txtRuta Is Nothing Then Return
+        Dim ruta As String = txtRuta.Text.Trim()
+        If ruta.Length > 24 Then ruta = ruta.Substring(0, 24) & "..."
+        lblSincronizado.Text = "   " & ruta & "   ·   Indice"
     End Sub
 
     Private Function CarpetaIndice() As String
@@ -640,31 +1263,13 @@ Public Class BuscadorFicherosForm
         Return System.IO.Path.GetFileNameWithoutExtension(archivo)
     End Function
 
-    Private Sub ActualizarInfoIndice()
-        Try
-            Dim archivos = ListarArchivosIndice()
-            If archivos.Count = 0 Then
-                lblIndiceInfo.Text = "Sin indice. Pulsa 'Indexar ahora'."
-                Return
-            End If
-            Dim ultima As Date = Date.MinValue
-            Dim raices As New System.Collections.Generic.List(Of String)
-            For Each a As String In archivos
-                Dim f As Date = System.IO.File.GetLastWriteTime(a)
-                If f > ultima Then ultima = f
-                raices.Add(RaizDeIndice(a))
-            Next
-            lblIndiceInfo.Text = archivos.Count.ToString() & " indice(s): " & _
-                String.Join(", ", raices.ToArray()) & "  (ult. " & ultima.ToString("yyyy-MM-dd HH:mm") & ")"
-        Catch
-            lblIndiceInfo.Text = ""
-        End Try
-    End Sub
-
     ' --- Eventos de rutas ---
     Private Sub OnExaminarRuta(sender As Object, e As System.EventArgs)
         Dim r As String = ElegirCarpeta(txtRuta.Text)
-        If r <> "" Then txtRuta.Text = r
+        If r <> "" Then
+            txtRuta.Text = r
+            ActualizarPildoraSincronizado()
+        End If
     End Sub
 
     Private Sub OnExaminarIndice(sender As Object, e As System.EventArgs)
@@ -678,26 +1283,21 @@ Public Class BuscadorFicherosForm
 
     Private Sub OnIndiceValidado(sender As Object, e As System.EventArgs)
         GuardarAjustes()
+        If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice())
+        ActualizarInfoIndice()
     End Sub
 
-    Private Sub OnFormularioClosing(sender As Object, _
-            e As System.Windows.Forms.FormClosingEventArgs)
-        If relacionesEnCurso Then
-            cancelar = True : cerrarTrasRelaciones = True
-            e.Cancel = True
-            Return
-        End If
-        If HayIndexacionActiva() Then
-            cancelar = True
-            e.Cancel = True
-            Return
-        End If
-        If panelUsos IsNot Nothing AndAlso Not panelUsos.PrepararCierre() Then
-            e.Cancel = True
-            Return
-        End If
-        If HayIndexacionActiva() Then cancelar = True
+    Private Sub OnFormularioClosing(sender As Object, e As System.Windows.Forms.FormClosingEventArgs)
+        Try
+            System.Windows.Forms.Application.RemoveMessageFilter(Me)
+        Catch
+        End Try
+        cancelar = True
+        DetenerRelojBusqueda()
+        If panelUsos IsNot Nothing Then panelUsos.PrepararCierre()
         GuardarAjustes()
+        CerrarProcesoRelaciones()
+        Instancia = Nothing
     End Sub
 
     Private Sub OnFormularioShown(sender As Object, e As System.EventArgs)
@@ -705,13 +1305,8 @@ Public Class BuscadorFicherosForm
         Me.BeginInvoke(New System.Action(AddressOf EnfocarCodigo))
     End Sub
 
-    ' Si el usuario cambia el tema de Windows mientras el buscador esta abierto,
-    ' el modo Sistema se actualiza al volver a activar esta ventana.
     Private Sub OnFormularioActivated(sender As Object, e As System.EventArgs)
-        If String.Equals(_temaSeleccionado, "Sistema", _
-                System.StringComparison.OrdinalIgnoreCase) Then
-            AplicarTemaActual()
-        End If
+        ' Sin accion: la v7.6 va siempre en tema oscuro.
     End Sub
 
     Private Sub OnTemaChanged(sender As Object, e As System.EventArgs)
@@ -722,9 +1317,12 @@ Public Class BuscadorFicherosForm
     End Sub
 
     Private Sub EnfocarCodigo()
-        Me.ActiveControl = txtCodigo
-        txtCodigo.Select()
-        txtCodigo.SelectAll()
+        Try
+            Me.ActiveControl = txtCodigo
+            txtCodigo.Select()
+            txtCodigo.SelectAll()
+        Catch
+        End Try
     End Sub
 
     Private Function ElegirCarpeta(inicial As String) As String
@@ -744,61 +1342,24 @@ Public Class BuscadorFicherosForm
         ElseIf cboUnidad.SelectedIndex > 0 Then
             txtRuta.Text = cboUnidad.SelectedItem.ToString()
         End If
+        ActualizarPildoraSincronizado()
     End Sub
 
     Private Sub OnIndiceCarpetaChanged(sender As Object, e As System.EventArgs)
-        ActualizarInfoIndice()
-    End Sub
-
-    Private Sub OnCodigoKeyDown(sender As Object, e As System.Windows.Forms.KeyEventArgs)
-        If e.KeyCode = System.Windows.Forms.Keys.Enter Then
-            OnBuscar(sender, e)
-            e.SuppressKeyPress = True
-        End If
+        cacheCarpeta = ""
     End Sub
 
     ' ================= TEMA VISUAL =================
     Private Function NormalizarTema(valor As String) As String
         Dim t As String = ""
         If valor IsNot Nothing Then t = valor.Trim().ToLowerInvariant()
-        If t = "oscuro" Then Return "Oscuro"
         If t = "normal" OrElse t = "claro" Then Return "Normal"
-        Return "Sistema"
+        If t = "sistema" Then Return "Sistema"
+        Return "Oscuro"
     End Function
 
     Private Function TemaOscuroActivo() As Boolean
-        Dim tema As String = NormalizarTema(_temaSeleccionado)
-        If tema = "Oscuro" Then Return True
-        If tema = "Normal" Then Return False
-        Return WindowsUsaTemaOscuro()
-    End Function
-
-    ' Lee AppsUseLightTheme sin crear una referencia de compilacion directa
-    ' a Microsoft.Win32.Registry. Si no puede leerlo, usa modo claro.
-    Private Function WindowsUsaTemaOscuro() As Boolean
-        Try
-            Dim tipoRegistro As System.Type = _
-                System.Type.GetType("Microsoft.Win32.Registry, mscorlib")
-            If tipoRegistro Is Nothing Then
-                tipoRegistro = System.Type.GetType( _
-                    "Microsoft.Win32.Registry, Microsoft.Win32.Registry")
-            End If
-            If tipoRegistro Is Nothing Then Return False
-
-            Dim tipos() As System.Type = New System.Type() { _
-                GetType(String), GetType(String), GetType(Object)}
-            Dim metodo As System.Reflection.MethodInfo = _
-                tipoRegistro.GetMethod("GetValue", tipos)
-            If metodo Is Nothing Then Return False
-
-            Dim clave As String = _
-                "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-            Dim valor As Object = metodo.Invoke(Nothing, New Object() { _
-                clave, "AppsUseLightTheme", 1})
-            Return System.Convert.ToInt32(valor) = 0
-        Catch
-            Return False
-        End Try
+        Return NormalizarTema(_temaSeleccionado) <> "Normal"
     End Function
 
     Private Function TipoColorSistema() As System.Type
@@ -843,44 +1404,120 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
+    Private Function CrearFuente(tamano As Single, negrita As Boolean) As Object
+        Try
+            Dim tipoFuente As System.Type = System.Type.GetType("System.Drawing.Font, System.Drawing.Common")
+            If tipoFuente Is Nothing Then tipoFuente = System.Type.GetType("System.Drawing.Font, System.Drawing")
+            If tipoFuente Is Nothing Then Return Nothing
+
+            Dim tipoEstilo As System.Type = System.Type.GetType("System.Drawing.FontStyle, System.Drawing.Common")
+            If tipoEstilo Is Nothing Then tipoEstilo = System.Type.GetType("System.Drawing.FontStyle, System.Drawing")
+
+            If tipoEstilo IsNot Nothing Then
+                Dim firma As System.Type() = New System.Type() { _
+                    GetType(System.String), GetType(System.Single), tipoEstilo}
+                Dim constructor As System.Reflection.ConstructorInfo = tipoFuente.GetConstructor(firma)
+                If constructor IsNot Nothing Then
+                    Dim estilo As Object = System.Enum.Parse(tipoEstilo, If(negrita, "Bold", "Regular"))
+                    Return constructor.Invoke(New Object() {"Segoe UI", tamano, estilo})
+                End If
+            End If
+
+            Dim firmaSimple As System.Type() = New System.Type() { _
+                GetType(System.String), GetType(System.Single)}
+            Dim constructorSimple As System.Reflection.ConstructorInfo = _
+                tipoFuente.GetConstructor(firmaSimple)
+            If constructorSimple Is Nothing Then Return Nothing
+            Return constructorSimple.Invoke(New Object() {"Segoe UI", tamano})
+        Catch
+            Return Nothing
+        End Try
+    End Function
+
+    Private Sub AplicarFuenteRecursiva(control As System.Windows.Forms.Control, fuente As Object)
+        If control Is Nothing OrElse fuente Is Nothing Then Return
+        AsignarColor(control, "Font", fuente)
+        For Each hijo As System.Windows.Forms.Control In control.Controls
+            AplicarFuenteRecursiva(hijo, fuente)
+        Next
+    End Sub
+
+    Private Sub AplicarFuenteATenues(control As System.Windows.Forms.Control, fuente As Object)
+        If control Is Nothing OrElse fuente Is Nothing Then Return
+        If control.Tag IsNot Nothing AndAlso System.Convert.ToString(control.Tag) = "TENUE" Then
+            AsignarColor(control, "Font", fuente)
+        End If
+        For Each hijo As System.Windows.Forms.Control In control.Controls
+            AplicarFuenteATenues(hijo, fuente)
+        Next
+    End Sub
+
+    Private Sub AplicarFuentes()
+        Dim base As Object = CrearFuente(CSng(9.0), False)
+        If base IsNot Nothing Then AplicarFuenteRecursiva(Me, base)
+
+        Dim pequena As Object = CrearFuente(CSng(7.5), True)
+        If pequena IsNot Nothing Then AplicarFuenteATenues(Me, pequena)
+
+        Dim titulo As Object = CrearFuente(CSng(12.0), True)
+        If titulo IsNot Nothing Then AsignarColor(lblTitulo, "Font", titulo)
+
+        Dim pestana As Object = CrearFuente(CSng(9.0), True)
+        If pestana IsNot Nothing Then AsignarColor(lblPestana, "Font", pestana)
+
+        Dim busqueda As Object = CrearFuente(CSng(12.0), False)
+        If busqueda IsNot Nothing Then AsignarColor(txtCodigo, "Font", busqueda)
+
+        Dim seleccion As Object = CrearFuente(CSng(9.5), True)
+        If seleccion IsNot Nothing Then AsignarColor(lblSeleccion, "Font", seleccion)
+    End Sub
+
     Private Sub AplicarTemaActual()
         Dim oscuro As Boolean = TemaOscuroActivo()
 
-        Dim fondoFormulario As Object
-        Dim fondoEntrada As Object
-        Dim fondoLista As Object
-        Dim fondoBoton As Object
-        Dim textoPrincipal As Object
-        Dim borde As Object
-
         If oscuro Then
-            fondoFormulario = CrearColor(59, 68, 83)
-            fondoEntrada = CrearColor(44, 51, 64)
-            fondoLista = CrearColor(40, 47, 59)
-            fondoBoton = CrearColor(79, 87, 101)
-            textoPrincipal = CrearColor(214, 214, 214)
-            borde = CrearColor(95, 115, 136)
+            _cFondo = CrearColor(47, 58, 73)
+            _cCabecera = CrearColor(38, 47, 60)
+            _cTarjeta = CrearColor(54, 65, 82)
+            _cAcciones = CrearColor(58, 69, 86)
+            _cEntrada = CrearColor(42, 52, 66)
+            _cLista = CrearColor(38, 48, 61)
+            _cBoton = CrearColor(67, 79, 97)
+            _cTexto = CrearColor(235, 238, 242)
+            _cTenue = CrearColor(150, 163, 180)
+            _cBorde = CrearColor(91, 107, 128)
+            _cAcento = CrearColor(214, 158, 46)
+            _cTextoAcento = CrearColor(30, 35, 44)
+            _cCerrar = CrearColor(158, 63, 63)
         Else
-            fondoFormulario = CrearColor(245, 246, 248)
-            fondoEntrada = CrearColor(255, 255, 255)
-            fondoLista = CrearColor(255, 255, 255)
-            fondoBoton = CrearColor(236, 238, 242)
-            textoPrincipal = CrearColor(28, 28, 30)
-            borde = CrearColor(176, 181, 188)
+            _cFondo = CrearColor(245, 246, 248)
+            _cCabecera = CrearColor(232, 235, 240)
+            _cTarjeta = CrearColor(255, 255, 255)
+            _cAcciones = CrearColor(238, 240, 244)
+            _cEntrada = CrearColor(255, 255, 255)
+            _cLista = CrearColor(255, 255, 255)
+            _cBoton = CrearColor(236, 238, 242)
+            _cTexto = CrearColor(28, 28, 30)
+            _cTenue = CrearColor(110, 120, 134)
+            _cBorde = CrearColor(176, 181, 188)
+            _cAcento = CrearColor(214, 158, 46)
+            _cTextoAcento = CrearColor(30, 35, 44)
+            _cCerrar = CrearColor(200, 90, 90)
         End If
 
-        If fondoFormulario Is Nothing Then Return
+        If _cFondo Is Nothing Then Return
 
-        AsignarColor(Me, "BackColor", fondoFormulario)
-        AsignarColor(Me, "ForeColor", textoPrincipal)
+        AsignarColor(Me, "BackColor", _cFondo)
+        AsignarColor(Me, "ForeColor", _cTexto)
 
         For Each control As System.Windows.Forms.Control In Me.Controls
-            AplicarTemaAControl(Control, oscuro, fondoFormulario, fondoEntrada, _
-                fondoLista, fondoBoton, textoPrincipal, borde)
+            AplicarTemaAControl(control, oscuro)
         Next
 
         AplicarEstiloFilas()
-        AplicarTemaMenuContextual(oscuro, fondoEntrada, textoPrincipal)
+        AplicarTemaMenuContextual(oscuro, _cEntrada, _cTexto)
+        AplicarFuentes()
+
         ' No usar Invalidate(Boolean): en el compilador iLogic de Inventor 2026
         ' esa sobrecarga fuerza referencias a System.Drawing.Common/Primitives.
         Try
@@ -888,6 +1525,22 @@ Public Class BuscadorFicherosForm
         Catch
         End Try
     End Sub
+
+    ' Devuelve el fondo del contenedor al que pertenece un control, para que las
+    ' etiquetas no se recorten sobre un color distinto al de su tarjeta.
+    Private Function FondoDeContenedor(control As System.Windows.Forms.Control) As Object
+        Dim padre As System.Windows.Forms.Control = control.Parent
+        While padre IsNot Nothing
+            If TypeOf padre Is ConsultaUsosPanel Then Return _cTarjeta
+            Dim etiqueta As String = ""
+            If padre.Tag IsNot Nothing Then etiqueta = System.Convert.ToString(padre.Tag)
+            If etiqueta = "CABECERA" OrElse etiqueta = "ESTADO" Then Return _cCabecera
+            If etiqueta = "ACCIONES" Then Return _cAcciones
+            If etiqueta = "TARJETA" OrElse etiqueta = "BUSQUEDA" Then Return _cTarjeta
+            padre = padre.Parent
+        End While
+        Return _cFondo
+    End Function
 
     Private Sub AplicarTemaMenuContextual(oscuro As Boolean, _
             fondo As Object, texto As Object)
@@ -906,32 +1559,31 @@ Public Class BuscadorFicherosForm
         Next
     End Sub
 
-    Private Sub AplicarTemaAControl(control As System.Windows.Forms.Control, _
-            oscuro As Boolean, fondoFormulario As Object, fondoEntrada As Object, _
-            fondoLista As Object, fondoBoton As Object, textoPrincipal As Object, _
-            borde As Object)
+    Private Sub AplicarTemaAControl(control As System.Windows.Forms.Control, oscuro As Boolean)
         If control Is Nothing Then Return
+
+        Dim etiqueta As String = ""
+        If control.Tag IsNot Nothing Then etiqueta = System.Convert.ToString(control.Tag)
 
         If TypeOf control Is System.Windows.Forms.TextBox Then
             Dim caja As System.Windows.Forms.TextBox = _
                 DirectCast(control, System.Windows.Forms.TextBox)
-            caja.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
-            AsignarColor(caja, "BackColor", fondoEntrada)
-            AsignarColor(caja, "ForeColor", textoPrincipal)
+            AsignarColor(caja, "BackColor", If(caja Is txtCodigo, _cTarjeta, _cEntrada))
+            AsignarColor(caja, "ForeColor", _cTexto)
 
         ElseIf TypeOf control Is System.Windows.Forms.ComboBox Then
             Dim combo As System.Windows.Forms.ComboBox = _
                 DirectCast(control, System.Windows.Forms.ComboBox)
             combo.FlatStyle = System.Windows.Forms.FlatStyle.Flat
-            AsignarColor(combo, "BackColor", fondoEntrada)
-            AsignarColor(combo, "ForeColor", textoPrincipal)
+            AsignarColor(combo, "BackColor", _cEntrada)
+            AsignarColor(combo, "ForeColor", _cTexto)
 
         ElseIf TypeOf control Is System.Windows.Forms.ListView Then
             Dim lista As System.Windows.Forms.ListView = _
                 DirectCast(control, System.Windows.Forms.ListView)
-            lista.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
-            AsignarColor(lista, "BackColor", fondoLista)
-            AsignarColor(lista, "ForeColor", textoPrincipal)
+            lista.BorderStyle = System.Windows.Forms.BorderStyle.None
+            AsignarColor(lista, "BackColor", _cLista)
+            AsignarColor(lista, "ForeColor", _cTexto)
 
         ElseIf TypeOf control Is System.Windows.Forms.Button Then
             Dim boton As System.Windows.Forms.Button = _
@@ -939,31 +1591,58 @@ Public Class BuscadorFicherosForm
             boton.UseVisualStyleBackColor = False
             boton.FlatStyle = System.Windows.Forms.FlatStyle.Flat
             boton.FlatAppearance.BorderSize = 1
-            AsignarColor(boton, "BackColor", fondoBoton)
-            AsignarColor(boton, "ForeColor", textoPrincipal)
-            AsignarColor(boton.FlatAppearance, "BorderColor", borde)
-            If oscuro Then
-                AsignarColor(boton.FlatAppearance, "MouseOverBackColor", _
-                    CrearColor(67, 91, 113))
-                AsignarColor(boton.FlatAppearance, "MouseDownBackColor", _
-                    CrearColor(51, 110, 144))
+
+            If etiqueta = "ACENTO" Then
+                AsignarColor(boton, "BackColor", _cAcento)
+                AsignarColor(boton, "ForeColor", _cTextoAcento)
+                AsignarColor(boton.FlatAppearance, "BorderColor", _cAcento)
+                AsignarColor(boton.FlatAppearance, "MouseOverBackColor", CrearColor(232, 178, 70))
+            Else
+                AsignarColor(boton, "BackColor", _cBoton)
+                AsignarColor(boton, "ForeColor", _cTexto)
+                AsignarColor(boton.FlatAppearance, "BorderColor", _cBorde)
+                If etiqueta = "CERRAR" Then
+                    AsignarColor(boton.FlatAppearance, "MouseOverBackColor", _cCerrar)
+                ElseIf oscuro Then
+                    AsignarColor(boton.FlatAppearance, "MouseOverBackColor", CrearColor(67, 91, 113))
+                    AsignarColor(boton.FlatAppearance, "MouseDownBackColor", CrearColor(51, 110, 144))
+                End If
             End If
 
         ElseIf TypeOf control Is System.Windows.Forms.Label _
                 OrElse TypeOf control Is System.Windows.Forms.RadioButton _
                 OrElse TypeOf control Is System.Windows.Forms.CheckBox Then
-            AsignarColor(control, "BackColor", fondoFormulario)
-            AsignarColor(control, "ForeColor", textoPrincipal)
+            If etiqueta = "PILDORA" Then
+                AsignarColor(control, "BackColor", _cEntrada)
+                AsignarColor(control, "ForeColor", _cTenue)
+            Else
+                AsignarColor(control, "BackColor", FondoDeContenedor(control))
+                AsignarColor(control, "ForeColor", If(etiqueta = "TENUE", _cTenue, _cTexto))
+            End If
+
+        ElseIf TypeOf control Is System.Windows.Forms.ProgressBar Then
+            AsignarColor(control, "BackColor", _cEntrada)
+            AsignarColor(control, "ForeColor", _cAcento)
+
+        ElseIf TypeOf control Is ConsultaUsosPanel Then
+            AsignarColor(control, "BackColor", _cTarjeta)
+            AsignarColor(control, "ForeColor", _cTexto)
+
+        ElseIf TypeOf control Is System.Windows.Forms.Panel Then
+            Dim fondo As Object = _cTarjeta
+            If etiqueta = "CABECERA" OrElse etiqueta = "ESTADO" Then fondo = _cCabecera
+            If etiqueta = "ACCIONES" Then fondo = _cAcciones
+            AsignarColor(control, "BackColor", fondo)
+            AsignarColor(control, "ForeColor", _cTexto)
 
         Else
-            AsignarColor(control, "BackColor", fondoFormulario)
-            AsignarColor(control, "ForeColor", textoPrincipal)
+            AsignarColor(control, "BackColor", _cFondo)
+            AsignarColor(control, "ForeColor", _cTexto)
         End If
 
         If control.HasChildren Then
             For Each hijo As System.Windows.Forms.Control In control.Controls
-                AplicarTemaAControl(hijo, oscuro, fondoFormulario, fondoEntrada, _
-                    fondoLista, fondoBoton, textoPrincipal, borde)
+                AplicarTemaAControl(hijo, oscuro)
             Next
         End If
     End Sub
@@ -981,45 +1660,30 @@ Public Class BuscadorFicherosForm
         If HayIndexacionActiva() Then Return
 
         Dim ruta As String = txtRuta.Text.Trim()
-        If ruta = "" OrElse Not System.IO.Directory.Exists(ruta) Then
-            System.Windows.Forms.MessageBox.Show("La carpeta a indexar no existe:" & vbCrLf & ruta, _
-                "Indexar", System.Windows.Forms.MessageBoxButtons.OK, _
-                System.Windows.Forms.MessageBoxIcon.Warning)
+        If ruta = "" Then
+            lblEstado.Text = "Selecciona la carpeta a indexar."
             Return
         End If
-
-        Dim carpetaIndice As String = txtIndice.Text.Trim()
-        If carpetaIndice = "" Then carpetaIndice = CarpetaConfig()
-        Try
-            System.IO.Directory.CreateDirectory(carpetaIndice)
-        Catch ex As System.Exception
-            System.Windows.Forms.MessageBox.Show("No se pudo usar la carpeta del indice:" & vbCrLf & _
-                ex.Message, "Indexar", System.Windows.Forms.MessageBoxButtons.OK, _
-                System.Windows.Forms.MessageBoxIcon.Error)
-            Return
-        End Try
 
         GuardarAjustes()
         cancelar = False
         btnIndexar.Enabled = False
         btnActualizar.Enabled = False
-        btnBuscar.Enabled = False
+        btnBuscar.Enabled = True
         btnCancelar.Enabled = True
         HabilitarAccionesResultados(False)
-        Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
+        barraProgreso.Style = System.Windows.Forms.ProgressBarStyle.Blocks
+        barraProgreso.Minimum = 0 : barraProgreso.Maximum = 100 : barraProgreso.Value = 0
+        barraProgreso.Visible = True
+        lblPorcentaje.Text = "0 %" : lblPorcentaje.Visible = True
 
         Dim archivo As String = ArchivoIndiceActual()
         _archivoIndexadoEnCurso = archivo
         _avisosPropiedades = 0
         Dim modo As String = If(esActualizacion, "Actualizando", "Indexando")
 
-        If chkPartNumber.Checked Then
-            lblEstado.Text = modo & " con Nº de pieza y descripcion en segundo plano..."
-            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoCompleto(ruta, archivo, esActualizacion))
-        Else
-            lblEstado.Text = modo & " en segundo plano: " & ruta & " ..."
-            hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo, esActualizacion))
-        End If
+        lblEstado.Text = modo & " nombres de archivos en segundo plano: " & ruta & " ..."
+        hiloTrabajo = New System.Threading.Thread(Sub() EjecutarIndexadoRapido(ruta, archivo, esActualizacion))
         hiloTrabajo.IsBackground = True
         Try
             hiloTrabajo.SetApartmentState(System.Threading.ApartmentState.STA)
@@ -1068,6 +1732,8 @@ Public Class BuscadorFicherosForm
     Private Sub EjecutarIndexadoRapido(ruta As String, archivo As String, esActualizacion As Boolean)
         _cuentaIndexada = 0
         _progreso = 0
+        _totalIndexar = 0
+        _faseIndexacion = "Contando"
         _nPiezas = 0
         _nEnsam = 0
         _nPlanos = 0
@@ -1077,11 +1743,22 @@ Public Class BuscadorFicherosForm
         Dim archivoTemporal As String = archivo & ".tmp"
 
         Try
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(archivo))
+            If Not System.IO.Directory.Exists(ruta) Then Throw New System.Exception("No se puede acceder a la carpeta a indexar.")
             If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
+
+            Dim archivosIndexables As New System.Collections.Generic.List(Of String)
+            _faseIndexacion = "Contando"
+            _progreso = 0 : _totalIndexar = 0
+            ActualizarProgresoAsync()
+            ReunirArchivosIndexables(ruta, archivosIndexables)
+            _totalIndexar = archivosIndexables.Count
+            _progreso = 0 : _faseIndexacion = "Indexando"
+            ActualizarProgresoAsync()
 
             Using sw As New System.IO.StreamWriter(archivoTemporal, False, New System.Text.UTF8Encoding(False))
                 sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta)
-                _cuentaIndexada = IndexarRapido(ruta, sw, viejo)
+                _cuentaIndexada = IndexarListaRapido(archivosIndexables, sw, viejo)
             End Using
 
             If cancelar Then
@@ -1108,41 +1785,25 @@ Public Class BuscadorFicherosForm
 
         Try
             If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
-                Me.Invoke(New System.Action(AddressOf FinIndexado))
+                Me.BeginInvoke(New System.Action(AddressOf FinIndexado))
             End If
         Catch
         End Try
     End Sub
 
-    Private Function IndexarRapido(carpeta As String, sw As System.IO.StreamWriter, _
-            viejo As System.Collections.Generic.Dictionary(Of String, String())) As Integer
-        If cancelar Then Return 0
-        Dim n As Integer = 0
+    Private Sub ReunirArchivosIndexables(carpeta As String, archivos As System.Collections.Generic.List(Of String))
+        If cancelar Then Return
         Dim ficheros() As String = Nothing
         Try
             ficheros = System.IO.Directory.GetFiles(carpeta)
         Catch
-            Return 0
+            Return
         End Try
         For Each f As String In ficheros
-            If cancelar Then Return n
-            Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
-            If EsIndexable(ext) Then
-                Dim ticks As Long = 0
-                Try
-                    ticks = System.IO.File.GetLastWriteTime(f).Ticks
-                Catch
-                End Try
-                Dim pn As String = ""
-                Dim desc As String = ""
-                Dim prev() As String = Nothing
-                If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then
-                    pn = prev(1)
-                    desc = prev(2)
-                End If
-                EscribirEntrada(sw, f, ticks, pn, desc)
-                n += 1
-                _progreso += 1
+            If cancelar Then Return
+            If EsIndexable(System.IO.Path.GetExtension(f).ToLowerInvariant()) Then
+                archivos.Add(f)
+                _progreso = archivos.Count
                 If (_progreso Mod 200) = 0 Then ActualizarProgresoAsync()
             End If
         Next
@@ -1150,12 +1811,36 @@ Public Class BuscadorFicherosForm
         Try
             subs = System.IO.Directory.GetDirectories(carpeta)
         Catch
-            Return n
+            Return
         End Try
         For Each sc As String In subs
+            If cancelar Then Return
             If EsCarpetaExcluida(sc) Then Continue For
-            n += IndexarRapido(sc, sw, viejo)
+            ReunirArchivosIndexables(sc, archivos)
+        Next
+    End Sub
+
+    Private Function IndexarListaRapido(archivos As System.Collections.Generic.List(Of String), _
+            sw As System.IO.StreamWriter, viejo As System.Collections.Generic.Dictionary(Of String, String())) As Integer
+        Dim n As Integer = 0
+        For Each f As String In archivos
             If cancelar Then Return n
+            Dim ticks As Long = 0
+            Try
+                ticks = System.IO.File.GetLastWriteTime(f).Ticks
+            Catch
+            End Try
+            Dim pn As String = ""
+            Dim desc As String = ""
+            Dim prev() As String = Nothing
+            If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then
+                pn = prev(1)
+                desc = prev(2)
+            End If
+            EscribirEntrada(sw, f, ticks, pn, desc)
+            n += 1
+            _progreso = n
+            If (_progreso Mod 50) = 0 OrElse _progreso = _totalIndexar Then ActualizarProgresoAsync()
         Next
         Return n
     End Function
@@ -1170,126 +1855,29 @@ Public Class BuscadorFicherosForm
     End Sub
 
     Private Sub MostrarProgreso()
-        lblEstado.Text = "Indexando... " & _progreso.ToString() & " ficheros"
+        If barraProgreso Is Nothing OrElse lblPorcentaje Is Nothing Then Return
+        barraProgreso.Minimum = 0 : barraProgreso.Maximum = 100
+        barraProgreso.Visible = True : lblPorcentaje.Visible = True
+        If _faseIndexacion = "Contando" Then
+            barraProgreso.Style = System.Windows.Forms.ProgressBarStyle.Marquee
+            barraProgreso.MarqueeAnimationSpeed = 30
+            lblPorcentaje.Text = "..."
+            lblEstado.Text = "Contando archivos... " & _progreso.ToString() & " encontrados."
+        Else
+            barraProgreso.Style = System.Windows.Forms.ProgressBarStyle.Blocks
+            barraProgreso.MarqueeAnimationSpeed = 0
+            Dim porcentaje As Integer = 100
+            If _totalIndexar > 0 Then
+                porcentaje = System.Math.Min(100, CInt(System.Math.Floor(CDbl(_progreso) * 100.0 / CDbl(_totalIndexar))))
+            End If
+            barraProgreso.Value = porcentaje
+            lblPorcentaje.Text = porcentaje.ToString() & " %"
+            lblEstado.Text = "Indexando: " & porcentaje.ToString() & " % (" & _progreso.ToString() & " de " & _totalIndexar.ToString() & " archivos)."
+        End If
     End Sub
 
-    Private Sub EjecutarIndexadoCompleto(ruta As String, archivo As String, esActualizacion As Boolean)
-        _cuentaIndexada = 0
-        _progreso = 0
-        _nPiezas = 0
-        _nEnsam = 0
-        _nPlanos = 0
-        _errorTrabajo = ""
-
-        Dim viejo = CargarIndiceDiccionario(archivo)
-        Dim archivoTemporal As String = archivo & ".tmp"
-
-
-        Try
-            If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
-
-            Using sw As New System.IO.StreamWriter(archivoTemporal, False, New System.Text.UTF8Encoding(False))
-                sw.WriteLine("#INDICE" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm") & vbTab & ruta & vbTab & "PN+DESC")
-                _cuentaIndexada = IndexarCompleto(ruta, sw, viejo)
-            End Using
-
-            If cancelar Then
-                Try
-                    If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
-                Catch
-                End Try
-            Else
-                ReemplazarIndiceDeFormaSegura(archivoTemporal, archivo)
-            End If
-
-        Catch ex As System.Exception
-            _errorTrabajo = ex.Message
-            Try
-                If System.IO.File.Exists(archivoTemporal) Then System.IO.File.Delete(archivoTemporal)
-            Catch
-            End Try
-        End Try
-
-        _indice = Nothing
-        _indiceFirma = ""
-        _resultadosBusqueda = Nothing
-        _codigoBusquedaActual = ""
-
-        Try
-            If Me.IsHandleCreated AndAlso Not Me.IsDisposed Then
-                Me.Invoke(New System.Action(AddressOf FinIndexado))
-            End If
-        Catch
-        End Try
-    End Sub
-
-    Private Function IndexarCompleto(carpeta As String, sw As System.IO.StreamWriter, _
-            viejo As System.Collections.Generic.Dictionary(Of String, String())) As Integer
-        If cancelar Then Return 0
-        Dim n As Integer = 0
-        Dim ficheros() As String = Nothing
-        Try
-            ficheros = System.IO.Directory.GetFiles(carpeta)
-        Catch
-            Return 0
-        End Try
-        For Each f As String In ficheros
-            If cancelar Then Return n
-            Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
-            If EsIndexable(ext) Then
-                Dim ticks As Long = 0
-                Try
-                    ticks = System.IO.File.GetLastWriteTime(f).Ticks
-                Catch
-                End Try
-
-                Dim pn As String = ""
-                Dim desc As String = ""
-                Dim prev() As String = Nothing
-                If viejo.TryGetValue(f, prev) AndAlso prev(0) = ticks.ToString() Then
-                    pn = prev(1)
-                    desc = prev(2)
-                Else
-                    Dim datos() As String = LeerPropiedadesPieza(f)
-                    pn = datos(0)
-                    desc = datos(1)
-                End If
-
-                EscribirEntrada(sw, f, ticks, pn, desc)
-                n += 1
-                _progreso += 1
-                If (_progreso Mod 20) = 0 Then ActualizarProgresoAsync()
-            End If
-        Next
-        Dim subs() As String = Nothing
-        Try
-            subs = System.IO.Directory.GetDirectories(carpeta)
-        Catch
-            Return n
-        End Try
-        For Each sc As String In subs
-            If EsCarpetaExcluida(sc) Then Continue For
-            n += IndexarCompleto(sc, sw, viejo)
-            If cancelar Then Return n
-        Next
-        Return n
-    End Function
-
-    Private relacionesEnCurso As Boolean = False
-    Private cerrarTrasRelaciones As Boolean = False
-    Private relojRelaciones As System.Windows.Forms.Timer
-    Private colaRelaciones As System.Collections.Generic.Queue(Of String)
-    Private vistosRelaciones As System.Collections.Generic.HashSet(Of String)
-    Private lineasRelaciones As System.Collections.Generic.List(Of String)
-    Private rutaRelaciones As String
-    Private leidosRelaciones As Integer
-    Private erroresRelaciones As Integer
-
-    Private Function CodificarUso(texto As String) As String
-        Return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(texto))
-    End Function
-
-    ' Esta funcion solo se llama en el hilo de Inventor durante la indexacion explicita.
+    ' Lectura de iProperties. Hoy no se usa porque el indexado completo esta
+    ' desactivado, pero se conserva por si se vuelve a habilitar el checkbox.
     Private Function LeerDocumentoParaIndice(ruta As String, propiedades As Boolean) As System.Collections.Generic.List(Of String())
         Dim salida As New System.Collections.Generic.List(Of String())
         Dim doc As Inventor.Document = Nothing
@@ -1334,122 +1922,28 @@ Public Class BuscadorFicherosForm
         Return salida
     End Function
 
-    Private Function LeerPropiedadesPieza(ruta As String) As String()
-        Try
-            Dim datos As System.Collections.Generic.List(Of String()) = DirectCast(Me.Invoke( _
-                New System.Func(Of System.Collections.Generic.List(Of String()))(Function() LeerDocumentoParaIndice(ruta, True))), System.Collections.Generic.List(Of String()))
-            Return datos(0)
-        Catch ex As System.Exception
-            System.Threading.Interlocked.Increment(_avisosPropiedades)
-            Return New String() {"", ""}
-        End Try
-    End Function
-
-    Private Sub IniciarIndiceRelaciones()
-        Try
-            rutaRelaciones = _archivoIndexadoEnCurso & ".usos"
-            colaRelaciones = New System.Collections.Generic.Queue(Of String)
-            vistosRelaciones = New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
-            For Each linea As String In System.IO.File.ReadAllLines(_archivoIndexadoEnCurso, System.Text.Encoding.UTF8)
-                If linea.StartsWith("#") OrElse String.IsNullOrWhiteSpace(linea) Then Continue For
-                Dim ruta As String = linea.Split(ChrW(9))(0)
-                If System.IO.Path.GetExtension(ruta).ToLowerInvariant() = ".iam" AndAlso Not EsCopiaSeguridad(ruta) AndAlso vistosRelaciones.Add(ruta) Then colaRelaciones.Enqueue(ruta)
-            Next
-            lineasRelaciones = New System.Collections.Generic.List(Of String)
-            lineasRelaciones.Add("#USOS1" & vbTab & System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
-            leidosRelaciones = 0 : erroresRelaciones = 0
-            relacionesEnCurso = True
-            btnIndexar.Enabled = False : btnActualizar.Enabled = False : btnBuscar.Enabled = False
-            btnCancelar.Enabled = True : HabilitarAccionesResultados(False)
-            txtRuta.Enabled = False : txtIndice.Enabled = False
-            btnExaminar.Enabled = False : btnExaminarIndice.Enabled = False : cboUnidad.Enabled = False
-            relojRelaciones = New System.Windows.Forms.Timer()
-            relojRelaciones.Interval = 100
-            AddHandler relojRelaciones.Tick, AddressOf PasoIndiceRelaciones
-            lblEstado.Text = "Actualizando relaciones con Inventor. Cancelar detiene tras el archivo actual."
-            relojRelaciones.Start()
-        Catch ex As System.Exception
-            relacionesEnCurso = False
-            lblEstado.Text = "No se pudo iniciar el indice de ensamblajes: " & ex.Message
-        End Try
-    End Sub
-
-    Private Sub PasoIndiceRelaciones(sender As Object, e As System.EventArgs)
-        relojRelaciones.Stop()
-        If cancelar OrElse colaRelaciones.Count = 0 Then
-            TerminarIndiceRelaciones() : Return
-        End If
-        Dim ruta As String = colaRelaciones.Dequeue()
-        lblEstado.Text = "Relaciones: " & leidosRelaciones.ToString() & " IAM revisados. Leyendo " & System.IO.Path.GetFileName(ruta)
-        lblEstado.Refresh()
-        Try
-            Dim referencias As System.Collections.Generic.List(Of String()) = LeerDocumentoParaIndice(ruta, False)
-            lineasRelaciones.Add("A" & vbTab & CodificarUso(ruta))
-            For Each referencia As String() In referencias
-                If referencia(1) <> "" Then
-                    erroresRelaciones += 1
-                    lineasRelaciones.Add("E" & vbTab & CodificarUso(ruta & " -> " & referencia(0) & ": " & referencia(1)))
-                Else
-                    lineasRelaciones.Add("R" & vbTab & CodificarUso(ruta) & vbTab & CodificarUso(referencia(0)))
-                    If System.IO.Path.GetExtension(referencia(0)).ToLowerInvariant() = ".iam" AndAlso vistosRelaciones.Add(referencia(0)) Then colaRelaciones.Enqueue(referencia(0))
-                End If
-            Next
-        Catch ex As System.Exception
-            erroresRelaciones += 1
-            lineasRelaciones.Add("E" & vbTab & CodificarUso(ruta & ": " & ex.Message))
-        End Try
-        leidosRelaciones += 1
-        relojRelaciones.Start()
-    End Sub
-
-    Private Sub TerminarIndiceRelaciones()
-        relojRelaciones.Stop() : relojRelaciones.Dispose()
-        Try
-            If cancelar Then
-                lblEstado.Text = "Actualizacion de relaciones cancelada. Se conserva el indice de relaciones anterior."
-            Else
-                Dim temporal As String = rutaRelaciones & "." & System.Guid.NewGuid().ToString("N") & ".tmp"
-                Try
-                    System.IO.File.WriteAllLines(temporal, lineasRelaciones.ToArray(), New System.Text.UTF8Encoding(False))
-                    ReemplazarIndiceDeFormaSegura(temporal, rutaRelaciones)
-                Finally
-                    If System.IO.File.Exists(temporal) Then System.IO.File.Delete(temporal)
-                End Try
-                lblEstado.Text = "Listo. Relaciones: " & leidosRelaciones.ToString() & " IAM revisados; " & erroresRelaciones.ToString() & " avisos de relaciones; " & _avisosPropiedades.ToString() & " avisos de propiedades."
-            End If
-        Catch ex As System.Exception
-            lblEstado.Text = "Error guardando relaciones: " & ex.Message
-        Finally
-            relacionesEnCurso = False
-            btnIndexar.Enabled = True : btnActualizar.Enabled = True : btnBuscar.Enabled = True
-            btnCancelar.Enabled = False : HabilitarAccionesResultados(True)
-            txtRuta.Enabled = True : txtIndice.Enabled = True
-            btnExaminar.Enabled = True : btnExaminarIndice.Enabled = True : cboUnidad.Enabled = True
-            Me.Cursor = System.Windows.Forms.Cursors.Default
-            ActualizarPanelUsos()
-        End Try
-        If cerrarTrasRelaciones Then Me.Close()
-    End Sub
-
     Private Sub FinIndexado()
-        Me.Cursor = System.Windows.Forms.Cursors.Default
-        btnIndexar.Enabled = True
-        btnActualizar.Enabled = True
         btnBuscar.Enabled = True
-        btnCancelar.Enabled = False
         HabilitarAccionesResultados(True)
         ActualizarInfoIndice()
 
         If _errorTrabajo <> "" Then
+            btnIndexar.Enabled = True : btnActualizar.Enabled = True : btnCancelar.Enabled = False
             lblEstado.Text = "Error al indexar: " & _errorTrabajo
+            barraProgreso.Visible = False : lblPorcentaje.Visible = False
         ElseIf cancelar Then
+            btnIndexar.Enabled = True : btnActualizar.Enabled = True : btnCancelar.Enabled = False
             lblEstado.Text = "Indexacion cancelada (" & _cuentaIndexada.ToString() & " ficheros)."
+            barraProgreso.Visible = False : lblPorcentaje.Visible = False
         Else
+            barraProgreso.Maximum = 100 : barraProgreso.Value = 100
+            lblPorcentaje.Text = "100 %" : lblPorcentaje.Visible = True
             lblEstado.Text = "Indice creado: " & _cuentaIndexada.ToString() & " ficheros (" & _
                 _nPiezas.ToString() & " piezas, " & _nEnsam.ToString() & " ensamblajes, " & _
-                _nPlanos.ToString() & " planos)."
+                _nPlanos.ToString() & " planos). Preparando relaciones..."
+            If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice(), True)
+            LanzarRelacionesEnSegundoInventor()
         End If
-        If Not cancelar AndAlso _errorTrabajo = "" Then IniciarIndiceRelaciones()
     End Sub
 
     ' ================= BUSQUEDA (sobre el indice) =================
@@ -1493,73 +1987,6 @@ Public Class BuscadorFicherosForm
             sb.Append(";")
         Next
         Return sb.ToString()
-    End Function
-
-    Private Function CargarIndices(archivos As System.Collections.Generic.List(Of String)) As Boolean
-        Dim lista As New System.Collections.Generic.List(Of String())
-        Dim vistos As New System.Collections.Generic.HashSet(Of String)( _
-            System.StringComparer.OrdinalIgnoreCase)
-        Dim errores As New System.Collections.Generic.List(Of String)
-        Dim indicesLeidos As Integer = 0
-
-        Try
-            Dim firma As String = FirmaIndices(archivos)
-            If _indice IsNot Nothing AndAlso _indiceFirma = firma Then Return True
-
-            For Each archivo As String In archivos
-                Try
-                    If Not System.IO.File.Exists(archivo) Then
-                        errores.Add(System.IO.Path.GetFileName(archivo) & ": no existe")
-                        Continue For
-                    End If
-
-                    Dim lineas() As String = LeerLineasIndiceConReintento(archivo, 5, 250)
-
-                    For Each l As String In lineas
-                        If String.IsNullOrWhiteSpace(l) OrElse l.StartsWith("#") Then Continue For
-
-                        Dim p() As String = l.Split(CChar(vbTab))
-                        If p.Length < 2 Then Continue For
-
-                        Dim ruta As String = p(0).Trim()
-                        If ruta = "" Then Continue For
-                        If vistos.Contains(ruta) Then Continue For
-
-                        Dim ticks As Long
-                        If Not Long.TryParse(p(1).Trim(), ticks) Then Continue For
-
-                        vistos.Add(ruta)
-
-                        Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(ruta).ToLowerInvariant()
-                        Dim ext As String = System.IO.Path.GetExtension(ruta).ToLowerInvariant()
-                        Dim pnLower As String = ""
-                        Dim descLower As String = ""
-                        If p.Length >= 3 Then pnLower = p(2).Trim().ToLowerInvariant()
-                        If p.Length >= 4 Then descLower = p(3).Trim().ToLowerInvariant()
-
-                        lista.Add(New String() {ruta, nombre, ext, ticks.ToString(), pnLower, descLower})
-                    Next
-
-                    indicesLeidos += 1
-
-                Catch exArchivo As System.Exception
-                    errores.Add(System.IO.Path.GetFileName(archivo) & ": " & exArchivo.Message)
-                End Try
-            Next
-
-            If indicesLeidos = 0 Then
-                _errorTrabajo = "No se pudo leer ningun indice."
-                Return False
-            End If
-
-            _indice = lista
-            _indiceFirma = firma
-            Return True
-
-        Catch ex As System.Exception
-            _errorTrabajo = ex.Message
-            Return False
-        End Try
     End Function
 
     Private Function LeerLineasIndiceConReintento(archivo As String, _
@@ -1633,66 +2060,163 @@ Public Class BuscadorFicherosForm
         End Try
     End Sub
 
-    Private Sub OnBuscar(sender As Object, e As System.EventArgs)
-        Dim codigo As String = txtCodigo.Text.Trim()
-        If codigo = "" Then
-            System.Windows.Forms.MessageBox.Show("Escribe un codigo para buscar.", "Buscador", _
-                System.Windows.Forms.MessageBoxButtons.OK, _
-                System.Windows.Forms.MessageBoxIcon.Information)
-            Return
+    Private Class ResultadoCarga
+        Public Indice As System.Collections.Generic.List(Of String())
+        Public Coincidencias As System.Collections.Generic.List(Of String())
+        Public Carpeta As String
+        Public Codigo As String
+        Public ErrorLectura As String = ""
+        Public Avisos As Integer
+        Public Archivos As Integer
+        Public Version As Integer
+        Public Truncado As Boolean
+    End Class
+
+    Private relojDatos As System.Windows.Forms.Timer
+    Private datosPendientes As Boolean
+    Private leyendoDatos As Boolean
+    Private codigoPendiente As String = ""
+    Private carpetaPendiente As String = ""
+    Private versionDatos As Integer
+    Private cacheCarpeta As String = ""
+    Private cacheArchivos As Integer
+    Private cacheAvisos As Integer
+    Private resultadoDatos As ResultadoCarga
+    Private cerradoDatos As Boolean
+    Private ReadOnly bloqueoDatos As New Object()
+
+    Private Sub PedirDatos(codigo As String, Optional recargar As Boolean = False)
+        If cerradoDatos Then Return
+        carpetaPendiente = CarpetaIndice()
+        codigoPendiente = codigo
+        versionDatos += 1
+        If recargar Then cacheCarpeta = ""
+        datosPendientes = True
+        If relojDatos Is Nothing Then
+            relojDatos = New System.Windows.Forms.Timer()
+            relojDatos.Interval = 100
+            AddHandler relojDatos.Tick, AddressOf ProcesarDatos
+            AddHandler Me.Disposed, AddressOf CerrarDatos
+            relojDatos.Start()
         End If
+        lblIndiceInfo.Text = "Cargando indices..."
+        If codigo <> "" Then lblEstado.Text = "Buscando " & codigo & "..."
+    End Sub
 
-        Dim archivos = ListarArchivosIndice()
-        If archivos.Count = 0 Then
-            Dim resp As System.Windows.Forms.DialogResult = System.Windows.Forms.MessageBox.Show( _
-                "No hay ningun indice en esa carpeta." & vbCrLf & vbCrLf & "¿Indexar ahora?", _
-                "Buscador", System.Windows.Forms.MessageBoxButtons.YesNo, _
-                System.Windows.Forms.MessageBoxIcon.Question)
-            If resp = System.Windows.Forms.DialogResult.Yes Then OnIndexar(sender, e)
-            Return
-        End If
+    Private Sub CerrarDatos(sender As Object, e As System.EventArgs)
+        SyncLock bloqueoDatos
+            cerradoDatos = True
+            cancelar = True
+        End SyncLock
+        If relojDatos IsNot Nothing Then relojDatos.Stop() : relojDatos.Dispose()
+    End Sub
 
-        lblEstado.Text = "Buscando en " & archivos.Count.ToString() & " indice(s)..."
-        Me.Cursor = System.Windows.Forms.Cursors.WaitCursor
-        Me.Refresh()
-
-        If Not CargarIndices(archivos) Then
-            Me.Cursor = System.Windows.Forms.Cursors.Default
-            System.Windows.Forms.MessageBox.Show("No se pudieron leer los indices.", _
-                "Buscador", System.Windows.Forms.MessageBoxButtons.OK, _
-                System.Windows.Forms.MessageBoxIcon.Error)
-            Return
-        End If
-
-        ' La busqueda principal se hace una sola vez sobre todos los tipos.
-        ' Piezas, ensamblajes y planos se filtran despues sobre esta cache.
-        Dim cod As String = codigo.ToLowerInvariant()
-        Dim encontrados As New System.Collections.Generic.List(Of String())
-        Dim truncado As Boolean = False
-
-        For Each entrada As String() In _indice
-            If EsCopiaSeguridad(entrada(0)) Then Continue For
-
-            Dim coincide As Boolean = entrada(1).Contains(cod)  ' nombre
-            If Not coincide AndAlso entrada(4) <> "" Then coincide = entrada(4).Contains(cod)  ' Nº pieza
-            If Not coincide AndAlso entrada(5) <> "" Then coincide = entrada(5).Contains(cod)  ' Descripcion
-
-            If coincide Then
-                encontrados.Add(entrada)
-                If encontrados.Count >= MAX_RESULTADOS Then
-                    truncado = True
-                    Exit For
+    Private Sub ProcesarDatos(sender As Object, e As System.EventArgs)
+        Dim recibido As ResultadoCarga = Nothing
+        SyncLock bloqueoDatos
+            recibido = resultadoDatos
+            resultadoDatos = Nothing
+        End SyncLock
+        If recibido IsNot Nothing AndAlso recibido.Version = versionDatos Then
+            If recibido.Indice IsNot Nothing Then
+                _indice = recibido.Indice
+                cacheCarpeta = recibido.Carpeta
+                cacheArchivos = recibido.Archivos : cacheAvisos = recibido.Avisos
+            End If
+            lblIndiceInfo.Text = If(recibido.ErrorLectura <> "", "No se pudieron cargar los indices.", recibido.Archivos.ToString() & " indices cargados" & If(recibido.Avisos > 0, " (parcial)", ""))
+            If recibido.Codigo <> "" Then
+                If recibido.ErrorLectura <> "" Then
+                    lblEstado.Text = recibido.ErrorLectura
+                Else
+                    _resultadosBusqueda = recibido.Coincidencias
+                    _codigoBusquedaActual = recibido.Codigo
+                    _resultadoTruncadoActual = recibido.Truncado
+                    AplicarFiltroResultados()
                 End If
             End If
-        Next
+        End If
+        If Not datosPendientes Then Return
+        SyncLock bloqueoDatos
+            If leyendoDatos OrElse cerradoDatos Then Return
+            leyendoDatos = True
+        End SyncLock
+        datosPendientes = False
+        Dim solicitud As New ResultadoCarga()
+        solicitud.Carpeta = carpetaPendiente : solicitud.Codigo = codigoPendiente : solicitud.Version = versionDatos
+        If String.Equals(cacheCarpeta, solicitud.Carpeta, System.StringComparison.OrdinalIgnoreCase) AndAlso _indice IsNot Nothing Then
+            solicitud.Indice = _indice
+            solicitud.Archivos = cacheArchivos : solicitud.Avisos = cacheAvisos
+        End If
+        Dim hilo As New System.Threading.Thread(Sub() LeerYBuscarDatos(solicitud))
+        hilo.IsBackground = True
+        hilo.Start()
+    End Sub
 
-        encontrados.Sort(Function(a, b) CLng(b(3)).CompareTo(CLng(a(3))))
-        _resultadosBusqueda = encontrados
-        _codigoBusquedaActual = codigo
-        _resultadoTruncadoActual = truncado
+    Private Sub LeerYBuscarDatos(solicitud As ResultadoCarga)
+        Try
+            If solicitud.Indice Is Nothing Then
+                Dim lista As New System.Collections.Generic.List(Of String())
+                Dim vistos As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
+                For Each archivo As String In System.IO.Directory.GetFiles(solicitud.Carpeta, "IndiceBuscador_*.txt")
+                    Try
+                        Using lector As New System.IO.StreamReader(archivo, System.Text.Encoding.UTF8)
+                            While Not lector.EndOfStream
+                                If cerradoDatos Then Return
+                                Dim linea As String = lector.ReadLine()
+                                If String.IsNullOrWhiteSpace(linea) OrElse linea.StartsWith("#") Then Continue While
+                                Dim p As String() = linea.Split(ChrW(9))
+                                Dim ticks As Long
+                                If p.Length < 2 OrElse Not Long.TryParse(p(1), ticks) Then Continue While
+                                Dim ruta As String = p(0).Trim()
+                                If ruta = "" OrElse Not vistos.Add(ruta) Then Continue While
+                                lista.Add(New String() {ruta, System.IO.Path.GetFileNameWithoutExtension(ruta).ToLowerInvariant(), System.IO.Path.GetExtension(ruta).ToLowerInvariant(), ticks.ToString(), If(p.Length > 2, p(2).ToLowerInvariant(), ""), If(p.Length > 3, p(3).ToLowerInvariant(), "")})
+                            End While
+                        End Using
+                        solicitud.Archivos += 1
+                    Catch
+                        solicitud.Avisos += 1
+                    End Try
+                Next
+                If solicitud.Archivos = 0 Then Throw New System.Exception("No se pudo leer ningun indice de archivos.")
+                solicitud.Indice = lista
+            End If
+            solicitud.Coincidencias = New System.Collections.Generic.List(Of String())
+            If solicitud.Codigo <> "" Then
+                Dim codigo As String = solicitud.Codigo.ToLowerInvariant()
+                For Each entrada As String() In solicitud.Indice
+                    If cerradoDatos Then Return
+                    If EsCopiaSeguridad(entrada(0)) Then Continue For
+                    If entrada(1).Contains(codigo) OrElse entrada(4).Contains(codigo) OrElse entrada(5).Contains(codigo) Then
+                        solicitud.Coincidencias.Add(entrada)
+                        If solicitud.Coincidencias.Count >= MAX_RESULTADOS Then solicitud.Truncado = True : Exit For
+                    End If
+                Next
+                solicitud.Coincidencias.Sort(Function(a, b) CLng(b(3)).CompareTo(CLng(a(3))))
+            End If
+        Catch ex As System.Exception
+            solicitud.ErrorLectura = "No se pudieron leer los indices: " & ex.Message
+        Finally
+            SyncLock bloqueoDatos
+                If Not cerradoDatos Then resultadoDatos = solicitud
+                leyendoDatos = False
+            End SyncLock
+        End Try
+    End Sub
 
-        Me.Cursor = System.Windows.Forms.Cursors.Default
-        AplicarFiltroResultados()
+    Private Sub ActualizarInfoIndice()
+        If lblIndiceInfo Is Nothing Then Return
+        PedirDatos("", True)
+    End Sub
+
+    Private Sub OnBuscar(sender As Object, e As System.EventArgs)
+        DetenerRelojBusqueda()
+        Dim codigo As String = txtCodigo.Text.Trim()
+        If codigo = "" Then
+            lblEstado.Text = "Escribe un codigo para buscar."
+            Return
+        End If
+        If panelUsos IsNot Nothing Then panelUsos.CambiarCarpeta(CarpetaIndice())
+        PedirDatos(codigo)
     End Sub
 
     Private Sub OnFiltroTipoChanged(sender As Object, e As System.EventArgs)
@@ -1736,15 +2260,17 @@ Public Class BuscadorFicherosForm
             tipo = "planos"
         End If
 
-        Dim msg As String = visibles.ToString() & " resultado(s) de " & tipo & _
-            " para """ & _codigoBusquedaActual & """. " & _
-            "Filtro aplicado sin repetir la busqueda."
-        If _resultadoTruncadoActual Then msg &= " (busqueda limitada a " & MAX_RESULTADOS & ")"
-        lblEstado.Text = msg
+        lblResultados.Text = visibles.ToString() & " resultado(s) encontrados" & _
+            If(_resultadoTruncadoActual, " (limite " & MAX_RESULTADOS.ToString() & ")", "")
+
+        lblEstado.Text = visibles.ToString() & " resultado(s) de " & tipo & _
+            " para """ & _codigoBusquedaActual & """."
 
         If lstResultados.Items.Count > 0 Then
             lstResultados.Items(0).Selected = True
             lstResultados.Select()
+        Else
+            ActualizarSeleccion()
         End If
     End Sub
 
@@ -1760,7 +2286,7 @@ Public Class BuscadorFicherosForm
         End Try
 
         item.SubItems.Add(fechaStr)
-        item.SubItems.Add(ruta)
+        item.SubItems.Add(System.IO.Path.GetDirectoryName(ruta))
         item.Tag = ruta
         Return item
     End Function
@@ -1793,12 +2319,12 @@ Public Class BuscadorFicherosForm
             Dim texto As Object
 
             If TemaOscuroActivo() Then
-                filaA = metodo.Invoke(Nothing, New Object() {40, 47, 59})
-                filaB = metodo.Invoke(Nothing, New Object() {45, 53, 66})
-                texto = metodo.Invoke(Nothing, New Object() {214, 214, 214})
+                filaA = metodo.Invoke(Nothing, New Object() {38, 48, 61})
+                filaB = metodo.Invoke(Nothing, New Object() {44, 55, 69})
+                texto = metodo.Invoke(Nothing, New Object() {214, 220, 228})
             Else
                 filaA = metodo.Invoke(Nothing, New Object() {255, 255, 255})
-                filaB = metodo.Invoke(Nothing, New Object() {226, 232, 240})
+                filaB = metodo.Invoke(Nothing, New Object() {236, 240, 245})
                 texto = metodo.Invoke(Nothing, New Object() {28, 28, 30})
             End If
 
@@ -1823,7 +2349,6 @@ Public Class BuscadorFicherosForm
             _ascendente = True
         End If
 
-        ' Reordenar la lista
         Dim sorter As New ColumnSorter(_ordenActual, _ascendente)
         lstResultados.ListViewItemSorter = sorter
         lstResultados.Sort()
@@ -1832,10 +2357,12 @@ Public Class BuscadorFicherosForm
 
     Private Sub OnCancelar(sender As Object, e As System.EventArgs)
         cancelar = True
+        If ProcesoRelacionesActivo() Then SolicitarCancelacionRelaciones()
         lblEstado.Text = "Cancelando..."
         btnCancelar.Enabled = False
     End Sub
 
+    ' ================= ACCIONES SOBRE RESULTADOS =================
     Private Function RutasSeleccionadas(Optional exigirExistencia As Boolean = True) _
             As System.Collections.Generic.List(Of String)
         Dim rutas As New System.Collections.Generic.List(Of String)
@@ -1901,17 +2428,28 @@ Public Class BuscadorFicherosForm
             OnAbrir(sender, e)
             e.Handled = True
             e.SuppressKeyPress = True
+        ElseIf e.KeyCode = System.Windows.Forms.Keys.Escape Then
+            e.Handled = True
+            e.SuppressKeyPress = True
+            CerrarBuscador()
+        End If
+    End Sub
+
+    Private Sub ActualizarSeleccion()
+        If lblSeleccion Is Nothing OrElse lstResultados Is Nothing Then Return
+        Dim n As Integer = lstResultados.SelectedItems.Count
+        If n = 0 Then
+            lblSeleccion.Text = "Ningun fichero seleccionado"
+        ElseIf n = 1 Then
+            lblSeleccion.Text = "1 fichero seleccionado"
+        Else
+            lblSeleccion.Text = n.ToString() & " ficheros seleccionados"
         End If
     End Sub
 
     Private Sub OnSeleccionResultadosChanged(sender As Object, e As System.EventArgs)
         ActualizarPanelUsos()
-        Dim n As Integer = lstResultados.SelectedItems.Count
-        If n > 0 Then
-            lblEstado.Text = n.ToString() & " seleccionado(s) de " & _
-                lstResultados.Items.Count.ToString() & ". " & _
-                "Boton derecho: acciones | Enter: abrir | Ctrl+C: copiar rutas | Supr: borrar | Esc: salir"
-        End If
+        ActualizarSeleccion()
         ActualizarEstadoMenuContextual()
     End Sub
 
@@ -2630,8 +3168,8 @@ Public Class ColumnSorter
 
         Dim resultado As Integer
 
-        ' Columnas: 0 Nombre, 1 Tipo, 2 Modificado, 3 Ruta
-        If _columnIndex = 2 Then  ' Modificado
+        ' Columnas: 0 Nombre, 1 Formato, 2 Modificado, 3 Ruta
+        If _columnIndex = 2 Then
             Dim fechaX As DateTime = DateTime.MinValue
             Dim fechaY As DateTime = DateTime.MinValue
             DateTime.TryParse(textoX, fechaX)
@@ -2647,387 +3185,382 @@ Public Class ColumnSorter
 
 End Class
 
-' Lee cada IAM una vez y construye el mapa inverso componente -> ensamblajes.
-' No usa ReferencingDocuments: solo conoce documentos cargados en memoria.
-'
-' Al seleccionar una pieza (o un ensamblaje) en los resultados, muestra en que
-' ensamblajes se encuentra: los que la montan directamente y tambien los
-' superiores que la contienen a traves de subconjuntos. Cada fila indica el
-' nombre del ensamblaje, el nivel de uso y la ruta completa.
+
+' Lee el mapa inverso componente -> ensamblajes que deja el proceso de
+' relaciones y responde a la seleccion sin tocar el disco ni Inventor.
 Public Class ConsultaUsosPanel
     Inherits System.Windows.Forms.UserControl
 
-    Private piezas As System.Collections.Generic.List(Of String)
-    Private appInventor As Inventor.Application
-    Private indices As System.Collections.Generic.List(Of String)
-    Private lista As System.Windows.Forms.ListView
+    Private Class DatosUsos
+        Public Padres As New System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))(System.StringComparer.OrdinalIgnoreCase)
+        Public Unidades As New System.Collections.Generic.Dictionary(Of String, String)(System.StringComparer.OrdinalIgnoreCase)
+        Public Respuestas As New System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))(System.StringComparer.OrdinalIgnoreCase)
+        Public IndicesLeidos As Integer
+        Public Parcial As Boolean
+        Public ErrorCarga As String = ""
+    End Class
+
+    Private listaEnsamblajes As System.Windows.Forms.ListView
     Private estado As System.Windows.Forms.Label
+    Private detalle As System.Windows.Forms.Label
+    Private botonAbrir As System.Windows.Forms.Button
+    Private oApp As Inventor.Application
     Private reloj As System.Windows.Forms.Timer
-    Private trabajador As System.Threading.Thread
-    Private detener As Integer = 0
-    Private finalizado As Integer = 0
-    Private progreso As Integer = 0
-    Private filasFinal As System.Collections.Generic.List(Of String())
-    Private mensajeFinal As String = ""
-    Private resumenFinal As String = "Ensamblajes que utilizan la pieza"
-    Private mapas As New System.Collections.Generic.Dictionary(Of String, String)(System.StringComparer.OrdinalIgnoreCase)
+    Private seleccion As New System.Collections.Generic.List(Of String)
+    Private carpeta As String = ""
+    Private datos As DatosUsos
+    Private terminado As DatosUsos
+    Private carpetaTerminada As String = ""
+    Private carga As Boolean = False
+    Private pendiente As Boolean = False
+    Private cerrado As Boolean = False
+    Private ReadOnly bloqueo As New Object()
 
     Private Declare Unicode Function WNetGetConnection Lib "mpr.dll" Alias "WNetGetConnectionW" ( _
         localName As String, remoteName As System.Text.StringBuilder, ByRef length As Integer) As Integer
 
-    Private nuevaSeleccion As System.Collections.Generic.List(Of String)
-    Private nuevosIndices As System.Collections.Generic.List(Of String)
-    Private ultimaPeticion As System.DateTime
-    Private cerrar As Boolean = False
-
     Public Sub New(app As Inventor.Application)
-        appInventor = app
+        oApp = app
 
-        lista = New System.Windows.Forms.ListView()
-        lista.View = System.Windows.Forms.View.Details
-        lista.FullRowSelect = True
-        lista.MultiSelect = True
-        lista.HideSelection = False
-        lista.GridLines = False
-        lista.Dock = System.Windows.Forms.DockStyle.Fill
-        lista.Columns.Add("Pieza buscada", 200)
-        lista.Columns.Add("Ensamblaje", 230)
-        lista.Columns.Add("Uso", 150)
-        lista.Columns.Add("Ruta del ensamblaje", 470)
-        AddHandler lista.DoubleClick, AddressOf AlAbrirEnsamblaje
-        AddHandler lista.KeyDown, AddressOf AlPulsarTecla
+        listaEnsamblajes = New System.Windows.Forms.ListView()
+        listaEnsamblajes.View = System.Windows.Forms.View.Details
+        listaEnsamblajes.FullRowSelect = True : listaEnsamblajes.MultiSelect = True
+        listaEnsamblajes.HideSelection = False : listaEnsamblajes.GridLines = False
+        listaEnsamblajes.Dock = System.Windows.Forms.DockStyle.Fill
+        listaEnsamblajes.Columns.Add("CODIGO", 130)
+        listaEnsamblajes.Columns.Add("FICHERO", 250)
+        AddHandler listaEnsamblajes.DoubleClick, AddressOf AbrirEnsamblajesSeleccionados
+        AddHandler listaEnsamblajes.KeyDown, AddressOf OnTeclaEnsamblajes
+        AddHandler listaEnsamblajes.SelectedIndexChanged, AddressOf OnEnsamblajeSeleccionado
+        AddHandler Me.Resize, AddressOf AjustarListaEnsamblajes
 
         estado = New System.Windows.Forms.Label()
-        estado.Text = "Ensamblajes que utilizan la pieza"
-        estado.Dock = System.Windows.Forms.DockStyle.Top : estado.Height = 24
+        estado.Text = "ENSAMBLAJES VINCULADOS"
+        estado.Height = 26
+        estado.Dock = System.Windows.Forms.DockStyle.Top
+        estado.Tag = "TENUE"
 
-        Me.Controls.Add(lista) : Me.Controls.Add(estado)
-        MostrarMensaje("Selecciona una pieza en los resultados.")
+        botonAbrir = New System.Windows.Forms.Button()
+        botonAbrir.Text = "Abrir ensamblaje IAM"
+        botonAbrir.Height = 34
+        botonAbrir.Dock = System.Windows.Forms.DockStyle.Bottom
+        botonAbrir.Tag = "ACENTO"
+        botonAbrir.TabStop = False
+        botonAbrir.Enabled = False
+        AddHandler botonAbrir.Click, AddressOf AbrirEnsamblajesSeleccionados
+
+        detalle = New System.Windows.Forms.Label()
+        detalle.Text = ""
+        detalle.Height = 40
+        detalle.Dock = System.Windows.Forms.DockStyle.Bottom
+        detalle.Tag = "TENUE"
+
+        ' El orden importa: primero el que rellena y despues los bordes.
+        Me.Controls.Add(listaEnsamblajes)
+        Me.Controls.Add(estado)
+        Me.Controls.Add(botonAbrir)
+        Me.Controls.Add(detalle)
+
+        MostrarMensaje("Selecciona una pieza.")
 
         reloj = New System.Windows.Forms.Timer()
-        reloj.Interval = 200
-        AddHandler reloj.Tick, AddressOf AlActualizar
-        AddHandler Me.Disposed, AddressOf AlDesechar
+        reloj.Interval = 100
+        AddHandler reloj.Tick, AddressOf RecibirCarga
+        AddHandler Me.Disposed, AddressOf AlCerrar
         reloj.Start()
     End Sub
 
     Public ReadOnly Property EnCurso As Boolean
         Get
-            Return trabajador IsNot Nothing AndAlso trabajador.IsAlive
+            Return False ' La lectura del indice no debe impedir las acciones ni cerrar el buscador.
         End Get
     End Property
 
-    Public Sub Consultar(seleccion As System.Collections.Generic.List(Of String), archivos As System.Collections.Generic.List(Of String))
-        nuevaSeleccion = seleccion
-        nuevosIndices = archivos
-        ultimaPeticion = System.DateTime.UtcNow
-        System.Threading.Interlocked.Exchange(detener, 1)
-        MostrarMensaje(If(seleccion.Count = 0, "Selecciona una pieza en los resultados.", "Consultando..."))
-        estado.Text = "Ensamblajes que utilizan la pieza"
-    End Sub
-
     Public Function PrepararCierre() As Boolean
-        cerrar = True
-        nuevaSeleccion = Nothing
-        System.Threading.Interlocked.Exchange(detener, 1)
+        SyncLock bloqueo
+            cerrado = True
+        End SyncLock
+        Try
+            reloj.Stop()
+        Catch
+        End Try
         Return True
     End Function
 
-    ' Escribe una sola fila informativa (sin resultados, aviso o error).
-    Private Sub MostrarMensaje(texto As String)
-        lista.BeginUpdate()
+    Private Sub AlCerrar(sender As Object, e As System.EventArgs)
+        PrepararCierre()
         Try
-            lista.Items.Clear()
-            Dim item As New System.Windows.Forms.ListViewItem("")
-            item.SubItems.Add(texto)
-            item.SubItems.Add("")
-            item.SubItems.Add("")
-            lista.Items.Add(item)
-        Finally
-            lista.EndUpdate()
+            reloj.Dispose()
+        Catch
         End Try
     End Sub
 
-    Private Sub MostrarFilas(filas As System.Collections.Generic.List(Of String()))
-        lista.BeginUpdate()
-        Try
-            lista.Items.Clear()
-            For Each fila As String() In filas
-                Dim item As New System.Windows.Forms.ListViewItem(fila(0))
-                item.SubItems.Add(fila(1))
-                item.SubItems.Add(fila(2))
-                item.SubItems.Add(fila(3))
-                item.Tag = fila(3)
-                lista.Items.Add(item)
-            Next
-        Finally
-            lista.EndUpdate()
-        End Try
+    Public Sub CambiarCarpeta(ruta As String, Optional forzar As Boolean = False)
+        Dim nueva As String = ruta.Trim().TrimEnd("\"c)
+        If nueva = "" Then Return
+        If String.Equals(carpeta, nueva, System.StringComparison.OrdinalIgnoreCase) AndAlso Not forzar Then Return
+        Dim distinta As Boolean = Not String.Equals(carpeta, nueva, System.StringComparison.OrdinalIgnoreCase)
+        carpeta = nueva
+        If distinta Then datos = Nothing
+        pendiente = True
+        IniciarCarga()
+        MostrarSeleccion()
     End Sub
 
-    Private Function RutasSeleccionadas() As System.Collections.Generic.List(Of String)
-        Dim rutas As New System.Collections.Generic.List(Of String)
-        For Each item As System.Windows.Forms.ListViewItem In lista.SelectedItems
-            If item.Tag Is Nothing Then Continue For
-            Dim ruta As String = item.Tag.ToString()
-            If ruta <> "" AndAlso Not rutas.Contains(ruta) Then rutas.Add(ruta)
-        Next
-        Return rutas
-    End Function
-
-    ' Doble clic sobre un ensamblaje: lo abre en Inventor sin cerrar el buscador.
-    Private Sub AlAbrirEnsamblaje(sender As Object, e As System.EventArgs)
-        Dim rutas As System.Collections.Generic.List(Of String) = RutasSeleccionadas()
-        If rutas.Count = 0 Then Return
-        For Each ruta As String In rutas
-            Try
-                If Not System.IO.File.Exists(ruta) Then Throw New System.Exception("el fichero ya no esta en esa ruta")
-                Dim abierto As Inventor.Document = Nothing
-                For Each doc As Inventor.Document In appInventor.Documents
-                    Try
-                        If String.Equals(doc.FullFileName, ruta, System.StringComparison.OrdinalIgnoreCase) Then
-                            abierto = doc
-                            Exit For
-                        End If
-                    Catch
-                    End Try
-                Next
-                If abierto IsNot Nothing Then
-                    abierto.Activate()
-                Else
-                    appInventor.Documents.Open(ruta, True)
-                End If
-            Catch ex As System.Exception
-                estado.Text = "No se pudo abrir " & System.IO.Path.GetFileName(ruta) & ": " & ex.Message
-            End Try
-        Next
+    Public Sub Consultar(piezas As System.Collections.Generic.List(Of String), carpetas As System.Collections.Generic.List(Of String))
+        seleccion = New System.Collections.Generic.List(Of String)(piezas)
+        If carpetas IsNot Nothing AndAlso carpetas.Count > 0 Then CambiarCarpeta(carpetas(0))
+        MostrarSeleccion()
     End Sub
 
-    Private Sub AlPulsarTecla(sender As Object, e As System.Windows.Forms.KeyEventArgs)
-        If e.Control AndAlso e.KeyCode = System.Windows.Forms.Keys.C Then
-            Dim rutas As System.Collections.Generic.List(Of String) = RutasSeleccionadas()
-            If rutas.Count > 0 Then
-                Try
-                    System.Windows.Forms.Clipboard.SetText(String.Join(vbCrLf, rutas.ToArray()))
-                    estado.Text = rutas.Count.ToString() & " ruta(s) de ensamblaje copiada(s)."
-                Catch
-                End Try
-            End If
-            e.Handled = True : e.SuppressKeyPress = True
-        ElseIf e.KeyCode = System.Windows.Forms.Keys.Enter Then
-            AlAbrirEnsamblaje(sender, e)
-            e.Handled = True : e.SuppressKeyPress = True
-        End If
-    End Sub
-
-    Private Sub AlDesechar(sender As Object, e As System.EventArgs)
-        System.Threading.Interlocked.Exchange(detener, 1)
-        reloj.Stop() : reloj.Dispose()
+    Private Sub IniciarCarga()
+        If Not pendiente Then Return
+        SyncLock bloqueo
+            If cerrado OrElse carga Then Return
+            carga = True
+        End SyncLock
+        pendiente = False
+        Dim destino As String = carpeta
+        Dim hilo As New System.Threading.Thread(Sub() CargarRelaciones(destino))
+        hilo.IsBackground = True
+        hilo.Start()
     End Sub
 
     Private Function Cancelada() As Boolean
-        Return System.Threading.Interlocked.CompareExchange(detener, 0, 0) <> 0
+        SyncLock bloqueo
+            Return cerrado
+        End SyncLock
     End Function
 
-    Private Sub AlActualizar(sender As Object, e As System.EventArgs)
-        If cerrar Then
-            If Not EnCurso Then
-                reloj.Stop()
-                Dim padre As System.Windows.Forms.Form = Me.FindForm()
-                If padre IsNot Nothing Then padre.Close()
+    Private Sub RecibirCarga(sender As Object, e As System.EventArgs)
+        Dim recibidos As DatosUsos = Nothing
+        Dim origen As String = ""
+        SyncLock bloqueo
+            If terminado IsNot Nothing Then
+                recibidos = terminado : origen = carpetaTerminada
+                terminado = Nothing
             End If
-            Return
-        End If
-        If EnCurso Then
-            estado.Text = If(Cancelada(), "Actualizando seleccion...", "Consultando indice: " & System.Threading.Interlocked.CompareExchange(progreso, 0, 0).ToString() & " revisados")
-            Return
-        End If
-        If nuevaSeleccion IsNot Nothing Then
-            If (System.DateTime.UtcNow - ultimaPeticion).TotalMilliseconds < 450 Then Return
-            piezas = nuevaSeleccion : indices = nuevosIndices
-            nuevaSeleccion = Nothing
-            If piezas.Count = 0 Then Return
-            If indices.Count = 0 Then
-                MostrarMensaje("Actualiza o crea los indices de las carpetas que contienen los ensamblajes.")
-                Return
-            End If
-            System.Threading.Interlocked.Exchange(detener, 0)
-            System.Threading.Interlocked.Exchange(finalizado, 0)
-            System.Threading.Interlocked.Exchange(progreso, 0)
-            trabajador = New System.Threading.Thread(AddressOf Ejecutar)
-            trabajador.IsBackground = True
-            trabajador.SetApartmentState(System.Threading.ApartmentState.STA)
-            trabajador.Start()
-            Return
-        End If
-        If System.Threading.Interlocked.Exchange(finalizado, 0) <> 0 AndAlso Not Cancelada() Then
-            If filasFinal IsNot Nothing AndAlso filasFinal.Count > 0 Then
-                MostrarFilas(filasFinal)
+        End SyncLock
+        If recibidos IsNot Nothing AndAlso String.Equals(origen, carpeta, System.StringComparison.OrdinalIgnoreCase) Then
+            ' Si falla la red, conserva los ultimos datos disponibles y marca el estado.
+            If recibidos.IndicesLeidos = 0 AndAlso recibidos.ErrorCarga <> "" AndAlso datos IsNot Nothing Then
+                datos.Parcial = True
             Else
-                MostrarMensaje(mensajeFinal)
+                datos = recibidos
             End If
-            estado.Text = resumenFinal
+            MostrarSeleccion()
         End If
+        IniciarCarga()
     End Sub
 
-    Private Function RutaClave(ruta As String) As String
-        If String.IsNullOrWhiteSpace(ruta) OrElse Not System.IO.Path.IsPathRooted(ruta) Then
-            Throw New System.Exception("Referencia sin ruta absoluta: " & ruta)
-        End If
-        Dim completa As String = System.IO.Path.GetFullPath(ruta)
-        ' Equipara unidades de red con su UNC real, sin suponer que P: siempre es la misma red.
-        If completa.Length >= 3 AndAlso completa(1) = ":"c Then
-            Dim unidad As String = completa.Substring(0, 2)
+    Private Shared Function Clave(ruta As String, unidades As System.Collections.Generic.Dictionary(Of String, String)) As String
+        Dim resultado As String = System.IO.Path.GetFullPath(ruta.Replace("/", "\"))
+        If resultado.Length > 2 AndAlso resultado(1) = ":"c Then
             Dim red As String = ""
-            If Not mapas.TryGetValue(unidad, red) Then
-                Dim longitud As Integer = 32768
-                Dim buffer As New System.Text.StringBuilder(longitud)
-                If WNetGetConnection(unidad, buffer, longitud) = 0 Then red = buffer.ToString()
-                mapas(unidad) = red
-            End If
-            If red <> "" Then completa = red.TrimEnd("\"c) & completa.Substring(2)
+            If unidades.TryGetValue(resultado.Substring(0, 2), red) AndAlso red <> "" Then resultado = red.TrimEnd("\"c) & resultado.Substring(2)
         End If
-        Return completa.TrimEnd("\"c)
+        Return resultado.TrimEnd("\"c)
     End Function
 
-    Private Function CopiaAntigua(ruta As String) As Boolean
-        Dim r As String = ruta.Replace("/", "\").ToLowerInvariant()
-        Return r.Contains("\oldversions\") OrElse r.Contains("\_oldversions\")
+    Private Shared Function Decodificar(valor As String) As String
+        Return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(valor))
     End Function
 
-    Private Sub Ejecutar()
-        Dim avisos As New System.Collections.Generic.List(Of String)
-        Dim padres As New System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))(System.StringComparer.OrdinalIgnoreCase)
-        Dim leidos As Integer = 0
-        Dim filas As New System.Collections.Generic.List(Of String())
-        filasFinal = Nothing
+    Private Sub CargarRelaciones(destino As String)
+        Dim resultado As New DatosUsos()
         Try
-            Dim archivos As String() = System.IO.Directory.GetFiles(indices(0), "IndiceBuscador_*.txt")
-            If archivos.Length = 0 Then Throw New System.Exception("No hay indices. Pulsa Indexar ahora para la carpeta de ensamblajes.")
-            Dim indicesUsos As Integer = 0
+            ' Resuelve unidades una sola vez, siempre fuera del hilo de la interfaz.
+            For Each unidad As String In System.Environment.GetLogicalDrives()
+                Dim largo As Integer = 32768
+                Dim buffer As New System.Text.StringBuilder(largo)
+                If WNetGetConnection(unidad.Substring(0, 2), buffer, largo) = 0 Then resultado.Unidades(unidad.Substring(0, 2)) = buffer.ToString()
+            Next
+            Dim archivos As String() = System.IO.Directory.GetFiles(destino, "IndiceBuscador_*.txt")
+            If archivos.Length = 0 Then resultado.ErrorCarga = "Sin indices"
             For Each archivo As String In archivos
                 If Cancelada() Then Return
                 Dim usos As String = archivo & ".usos"
                 If Not System.IO.File.Exists(usos) Then
-                    avisos.Add("Falta actualizar relaciones para " & System.IO.Path.GetFileName(archivo))
+                    resultado.Parcial = True
                     Continue For
                 End If
                 Try
-                    Dim lineas As String() = System.IO.File.ReadAllLines(usos, System.Text.Encoding.UTF8)
-                    If lineas.Length = 0 OrElse Not lineas(0).StartsWith("#USOS1" & vbTab) Then Throw New System.Exception("Indice de relaciones no valido")
-                    indicesUsos += 1
-                    If System.IO.File.GetLastWriteTimeUtc(archivo) > System.IO.File.GetLastWriteTimeUtc(usos) Then avisos.Add("Relaciones anteriores al indice de archivos: " & System.IO.Path.GetFileName(archivo))
-                    For Each linea As String In lineas
-                        If Cancelada() Then Return
-                        Dim p As String() = linea.Split(ChrW(9))
-                        If p(0) = "A" Then
-                            leidos += 1
-                            System.Threading.Interlocked.Exchange(progreso, leidos)
-                        ElseIf p(0) = "E" Then
-                            avisos.Add(System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(p(1))))
-                        ElseIf p(0) = "R" Then
-                            Dim ensamblaje As String = RutaClave(System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(p(1))))
-                            Dim hijo As String = RutaClave(System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(p(2))))
-                            If CopiaAntigua(ensamblaje) Then Continue For
-                            If Not padres.ContainsKey(hijo) Then padres(hijo) = New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
-                            padres(hijo).Add(ensamblaje)
-                        End If
+                    ' Primero valida el archivo completo; nunca publica medio archivo.
+                    Dim temporal As New System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))(System.StringComparer.OrdinalIgnoreCase)
+                    Using lector As New System.IO.StreamReader(usos, System.Text.Encoding.UTF8)
+                        Dim cabecera As String = lector.ReadLine()
+                        If cabecera Is Nothing OrElse (Not cabecera.StartsWith("#USOS1" & vbTab) AndAlso Not cabecera.StartsWith("#USOS2" & vbTab)) Then Throw New System.Exception("Formato de relaciones no reconocido")
+                        While Not lector.EndOfStream
+                            If Cancelada() Then Return
+                            Dim linea As String = lector.ReadLine()
+                            Dim partes As String() = linea.Split(ChrW(9))
+                            If partes(0) = "E" Then
+                                resultado.Parcial = True
+                            ElseIf partes(0) = "R" Then
+                                If partes.Length <> 3 Then Throw New System.Exception("Relacion incompleta")
+                                Dim padre As String = Clave(Decodificar(partes(1)), resultado.Unidades)
+                                Dim hijo As String = Clave(Decodificar(partes(2)), resultado.Unidades)
+                                If Not temporal.ContainsKey(hijo) Then temporal(hijo) = New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
+                                temporal(hijo).Add(padre)
+                            End If
+                        End While
+                    End Using
+                    For Each par As System.Collections.Generic.KeyValuePair(Of String, System.Collections.Generic.HashSet(Of String)) In temporal
+                        If Not resultado.Padres.ContainsKey(par.Key) Then resultado.Padres(par.Key) = New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
+                        resultado.Padres(par.Key).UnionWith(par.Value)
                     Next
-                Catch ex As System.Exception
-                    avisos.Add(usos & ": " & ex.Message)
+                    resultado.IndicesLeidos += 1
+                    If System.IO.File.GetLastWriteTimeUtc(archivo) > System.IO.File.GetLastWriteTimeUtc(usos) Then resultado.Parcial = True
+                Catch
+                    resultado.Parcial = True
                 End Try
             Next
-            If indicesUsos = 0 Then
-                mensajeFinal = "Pulsa Actualizar en la carpeta del ensamblaje."
-                resumenFinal = "Falta actualizar relaciones"
-                Return
-            End If
-
-            Dim distintos As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
-            Dim conjuntosDirectos As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
-            For Each pieza As String In piezas
-                Dim clave As String = RutaClave(pieza)
-                Dim nombrePieza As String = System.IO.Path.GetFileName(pieza)
-                Dim niveles As System.Collections.Generic.Dictionary(Of String, Integer) = _
-                    ObtenerAncestrosConNivel(clave, padres)
-                If niveles.Count = 0 Then
-                    filas.Add(New String() {nombrePieza, "No se usa en ningun ensamblaje del indice", "", ""})
-                    Continue For
-                End If
-                ' Orden: primero los usos directos y, dentro de cada nivel, por ruta.
-                ' Se ordena una lista de claves "nivel|ruta" para no usar lambdas,
-                ' que el compilador de iLogic no admite dentro de esta clase.
-                Dim ordenadas As New System.Collections.Generic.List(Of String)
-                For Each ruta As String In niveles.Keys
-                    ordenadas.Add(niveles(ruta).ToString("D3") & "|" & ruta)
-                Next
-                ordenadas.Sort()
-                For Each entrada As String In ordenadas
-                    Dim corte As Integer = entrada.IndexOf("|")
-                    Dim nivel As Integer = System.Convert.ToInt32(entrada.Substring(0, corte))
-                    Dim rutaEnsamblaje As String = entrada.Substring(corte + 1)
-                    Dim uso As String = "Nivel " & nivel.ToString()
-                    If nivel = 1 Then
-                        uso = "Directo"
-                        conjuntosDirectos.Add(rutaEnsamblaje)
-                    End If
-                    If Not padres.ContainsKey(rutaEnsamblaje) Then
-                        uso = uso & " - conjunto final"
-                    ElseIf padres(rutaEnsamblaje).Count = 0 Then
-                        uso = uso & " - conjunto final"
-                    End If
-                    filas.Add(New String() {nombrePieza, System.IO.Path.GetFileName(rutaEnsamblaje), uso, rutaEnsamblaje})
-                    distintos.Add(rutaEnsamblaje)
-                Next
-            Next
-
-            If distintos.Count = 0 Then
-                filasFinal = filas
-                mensajeFinal = If(avisos.Count > 0, "Pendiente de completar las relaciones.", "Sin ensamblajes en el indice.")
-                resumenFinal = If(avisos.Count > 0, "Consulta incompleta", "Ensamblajes: 0")
-            Else
-                filasFinal = filas
-                resumenFinal = "Ensamblajes: " & distintos.Count.ToString() & " (" & conjuntosDirectos.Count.ToString() & " directo(s))" & _
-                    If(avisos.Count > 0, " - consulta parcial", "") & _
-                    " | Doble clic: abrir | Ctrl+C: copiar ruta"
-            End If
-
         Catch ex As System.Exception
-            filasFinal = Nothing
-            mensajeFinal = "No se pudo leer el indice de relaciones."
-            resumenFinal = "Consulta incompleta"
+            resultado.Parcial = True
+            resultado.ErrorCarga = ex.Message
         Finally
-            System.Threading.Interlocked.Exchange(finalizado, 1)
+            SyncLock bloqueo
+                If Not cerrado Then
+                    terminado = resultado : carpetaTerminada = destino
+                End If
+                carga = False
+            End SyncLock
         End Try
     End Sub
 
-    ' Recorre el mapa inverso hacia arriba y guarda el nivel mas corto en el que
-    ' cada ensamblaje contiene la pieza: 1 = la monta directamente.
-    ' Recorrido por anchura con dos listas paralelas (ruta y nivel) para no usar
-    ' colas de arrays ni Continue While dentro de la regla iLogic.
-    Private Shared Function ObtenerAncestrosConNivel(clave As String, padres As System.Collections.Generic.Dictionary(Of String, System.Collections.Generic.HashSet(Of String))) As System.Collections.Generic.Dictionary(Of String, Integer)
-        Dim niveles As New System.Collections.Generic.Dictionary(Of String, Integer)(System.StringComparer.OrdinalIgnoreCase)
-        Dim rutas As New System.Collections.Generic.List(Of String)
-        Dim alturas As New System.Collections.Generic.List(Of Integer)
-        rutas.Add(clave)
-        alturas.Add(0)
-        Dim indice As Integer = 0
-        Do While indice < rutas.Count
-            Dim actual As String = rutas(indice)
-            Dim nivel As Integer = alturas(indice) + 1
-            indice += 1
-            If padres.ContainsKey(actual) Then
-                For Each superior As String In padres(actual)
-                    If Not String.Equals(superior, clave, System.StringComparison.OrdinalIgnoreCase) Then
-                        If Not niveles.ContainsKey(superior) Then
-                            niveles(superior) = nivel
-                            rutas.Add(superior)
-                            alturas.Add(nivel)
-                        End If
-                    End If
-                Next
-            End If
-        Loop
-        Return niveles
+    Private Shared Function Ancestros(clavePieza As String, indice As DatosUsos) As System.Collections.Generic.HashSet(Of String)
+        If indice.Respuestas.ContainsKey(clavePieza) Then Return indice.Respuestas(clavePieza)
+        Dim padres As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
+        Dim cola As New System.Collections.Generic.Queue(Of String)
+        cola.Enqueue(clavePieza)
+        While cola.Count > 0
+            Dim actual As String = cola.Dequeue()
+            If Not indice.Padres.ContainsKey(actual) Then Continue While
+            For Each padre As String In indice.Padres(actual)
+                If Not String.Equals(padre, clavePieza, System.StringComparison.OrdinalIgnoreCase) AndAlso padres.Add(padre) Then cola.Enqueue(padre)
+            Next
+        End While
+        indice.Respuestas(clavePieza) = padres
+        Return padres
     End Function
+
+    Private Sub AjustarListaEnsamblajes(sender As Object, e As System.EventArgs)
+        If listaEnsamblajes Is Nothing OrElse listaEnsamblajes.Columns.Count < 2 Then Return
+        Dim disponible As Integer = listaEnsamblajes.Width - 8
+        If disponible < 160 Then Return
+        listaEnsamblajes.Columns(0).Width = 130
+        listaEnsamblajes.Columns(1).Width = disponible - 130
+    End Sub
+
+    Private Sub MostrarMensaje(texto As String)
+        listaEnsamblajes.BeginUpdate()
+        Try
+            listaEnsamblajes.Items.Clear()
+            Dim elemento As New System.Windows.Forms.ListViewItem(texto)
+            elemento.SubItems.Add("")
+            elemento.Tag = Nothing
+            listaEnsamblajes.Items.Add(elemento)
+        Finally
+            listaEnsamblajes.EndUpdate()
+        End Try
+        If detalle IsNot Nothing Then detalle.Text = ""
+        If botonAbrir IsNot Nothing Then botonAbrir.Enabled = False
+    End Sub
+
+    Private Function CodigoEnsamblaje(ruta As String) As String
+        Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(ruta)
+        Dim coincidencia As System.Text.RegularExpressions.Match = _
+            System.Text.RegularExpressions.Regex.Match(nombre, "^[A-Za-z]*\d+")
+        Return If(coincidencia.Success, coincidencia.Value.ToUpperInvariant(), nombre)
+    End Function
+
+    Private Sub OnEnsamblajeSeleccionado(sender As Object, e As System.EventArgs)
+        If listaEnsamblajes.SelectedItems.Count = 0 OrElse listaEnsamblajes.SelectedItems(0).Tag Is Nothing Then
+            detalle.Text = ""
+            botonAbrir.Enabled = False
+            Return
+        End If
+        Dim ruta As String = listaEnsamblajes.SelectedItems(0).Tag.ToString()
+        detalle.Text = System.IO.Path.GetDirectoryName(ruta)
+        botonAbrir.Enabled = True
+    End Sub
+
+    Private Sub MostrarSeleccion()
+        If seleccion.Count = 0 Then
+            estado.Text = "ENSAMBLAJES VINCULADOS"
+            MostrarMensaje("Selecciona una pieza.")
+            Return
+        End If
+        If datos Is Nothing Then
+            estado.Text = "ENSAMBLAJES VINCULADOS"
+            MostrarMensaje("Cargando indice de relaciones...")
+            Return
+        End If
+        If datos.IndicesLeidos = 0 Then
+            estado.Text = "SIN RELACIONES DISPONIBLES"
+            MostrarMensaje(If(datos.ErrorCarga <> "", "No se pudo cargar el indice.", "Falta generar el indice de relaciones."))
+            Return
+        End If
+
+        Dim total As New System.Collections.Generic.HashSet(Of String)(System.StringComparer.OrdinalIgnoreCase)
+        For Each pieza As String In seleccion
+            Try
+                total.UnionWith(Ancestros(Clave(pieza, datos.Unidades), datos))
+            Catch
+                estado.Text = "SELECCION NO VALIDA"
+                MostrarMensaje("Selecciona un archivo del listado.")
+                Return
+            End Try
+        Next
+        If total.Count = 0 Then
+            estado.Text = "ENSAMBLAJES VINCULADOS: 0" & If(datos.Parcial, "  (indice parcial)", "")
+            MostrarMensaje(If(datos.Parcial, "Sin coincidencias; indice incompleto.", "Sin ensamblajes en el indice."))
+            Return
+        End If
+
+        Dim rutas As New System.Collections.Generic.List(Of String)(total)
+        rutas.Sort(Function(a As String, b As String) _
+            System.StringComparer.OrdinalIgnoreCase.Compare(CodigoEnsamblaje(a), CodigoEnsamblaje(b)))
+        listaEnsamblajes.BeginUpdate()
+        Try
+            listaEnsamblajes.Items.Clear()
+            For Each ruta As String In rutas
+                Dim elemento As New System.Windows.Forms.ListViewItem(CodigoEnsamblaje(ruta))
+                elemento.SubItems.Add(System.IO.Path.GetFileName(ruta))
+                elemento.Tag = ruta
+                listaEnsamblajes.Items.Add(elemento)
+            Next
+            If listaEnsamblajes.Items.Count > 0 Then listaEnsamblajes.Items(0).Selected = True
+        Finally
+            listaEnsamblajes.EndUpdate()
+        End Try
+        estado.Text = "ENSAMBLAJES VINCULADOS: " & total.Count.ToString() & _
+            If(datos.Parcial, "  (indice parcial)", "")
+    End Sub
+
+    Private Sub OnTeclaEnsamblajes(sender As Object, e As System.Windows.Forms.KeyEventArgs)
+        If e.KeyCode = System.Windows.Forms.Keys.Enter Then
+            AbrirEnsamblajesSeleccionados(sender, e)
+            e.Handled = True : e.SuppressKeyPress = True
+        End If
+    End Sub
+
+    Private Sub AbrirEnsamblajesSeleccionados(sender As Object, e As System.EventArgs)
+        If oApp Is Nothing OrElse listaEnsamblajes.SelectedItems.Count = 0 Then Return
+        Dim errores As Integer = 0
+        For Each elemento As System.Windows.Forms.ListViewItem In listaEnsamblajes.SelectedItems
+            If elemento.Tag Is Nothing Then Continue For
+            Dim ruta As String = elemento.Tag.ToString()
+            Try
+                If System.IO.File.Exists(ruta) Then
+                    oApp.Documents.Open(ruta, True)
+                Else
+                    errores += 1
+                End If
+            Catch
+                errores += 1
+            End Try
+        Next
+        If errores > 0 Then estado.Text = "NO SE PUDIERON ABRIR " & errores.ToString() & " ENSAMBLAJE(S)"
+    End Sub
 End Class
