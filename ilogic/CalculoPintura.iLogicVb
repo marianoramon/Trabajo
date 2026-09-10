@@ -1,0 +1,374 @@
+﻿AddReference "System.Windows.Forms.dll"
+
+' ============================================================================
+' REGLA iLOGIC: CALCULO_PINTURA
+' ENTORNO: Autodesk Inventor 2026
+'  ALCANCE: Metalplak - cálculo aproximado para 1 unidad del IPT/IAM activo.
+' No guarda ni cierra el documento. OJO: llama a Update2 para poner la
+' geometría al día, y eso deja el documento marcado como modificado; al
+' cerrarlo Inventor puede pedir guardar.
+'
+' MÉTODOS MOSTRADOS:
+'   - Hoja de cálculo: 4 kg/lanza.
+'   - Consumo real observado: 20 kg/6 lanzas = 3,333 kg/lanza.
+'   - Tiempo para ambos: 7 min/lanza, con corrección -5 %.
+'   - Capacidad calculada con lanza 7000 x 2000 mm y separación 150 mm.
+'   - Igual que la hoja: primero redondea la medida de la pieza a 100 mm
+'     y después suma los 150 mm de separación.
+'
+' IMPORTANTE:
+'   - Reproduce la fórmula de la hoja: no limita las piezas calculadas a 34.
+'   - Los 17 ganchos y 34 huecos se muestran como datos informativos.
+' ============================================================================
+
+Sub Main()
+
+    Const LANZA_LARGO_MM As Double = 7000.0
+    Const LANZA_ANCHO_MM As Double = 2000.0
+    Const MAX_GANCHOS As Integer = 17
+    Const MAX_HUECOS As Integer = 34
+    Const PUERTA_MAX_MM As Double = 900.0
+    Const ALTURA_MAX_MM As Double = 2300.0
+    Const SEPARACION_MM As Double = 150.0
+    Const KG_HOJA_POR_LANZA As Double = 4.0
+    Const KG_OBSERVADOS As Double = 20.0
+    Const LANZAS_OBSERVADAS As Integer = 6
+    Const MINUTOS_POR_LANZA As Double = 7.0
+    Const CORRECCION_TIEMPO As Double = -5.0
+
+    Dim documento As Inventor.Document = ThisApplication.ActiveDocument
+    If documento Is Nothing Then
+        MostrarError("No hay ningún documento activo en Inventor.")
+        Exit Sub
+    End If
+
+    If documento.DocumentType <> DocumentTypeEnum.kPartDocumentObject AndAlso _
+       documento.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        MostrarError( _
+            "El documento activo no es una pieza IPT ni un ensamblaje IAM." & _
+            vbCrLf & "Abre el modelo que quieras calcular y ejecuta la regla.")
+        Exit Sub
+    End If
+
+    Dim rutaModelo As String = ""
+    Dim nombreModelo As String = ""
+    Try
+        rutaModelo = documento.FullFileName
+    Catch
+    End Try
+
+    If Not String.IsNullOrWhiteSpace(rutaModelo) Then
+        nombreModelo = System.IO.Path.GetFileNameWithoutExtension(rutaModelo)
+    Else
+        nombreModelo = _
+            System.IO.Path.GetFileNameWithoutExtension(documento.DisplayName)
+        rutaModelo = "(documento todavía sin guardar)"
+    End If
+
+    Dim codigo As String = ExtraerCodigoDesdeNombre(nombreModelo)
+    ThisApplication.StatusBarText = "Calculando pintura de " & codigo & "..."
+
+    Try
+        If Not documento.Update2(True) Then
+            Throw New Exception( _
+                "Inventor no ha podido actualizar completamente el modelo." & _
+                vbCrLf & "Comprueba las referencias del ensamblaje.")
+        End If
+
+        Dim esEnsamblaje As Boolean = _
+            (documento.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject)
+
+        Dim caja As Inventor.Box = Nothing
+        Dim propiedadesMasa As Inventor.MassProperties = Nothing
+
+        If esEnsamblaje Then
+            Dim docIAM As Inventor.AssemblyDocument = _
+                CType(documento, Inventor.AssemblyDocument)
+            caja = docIAM.ComponentDefinition.RangeBox
+            propiedadesMasa = docIAM.ComponentDefinition.MassProperties
+        Else
+            Dim docIPT As Inventor.PartDocument = _
+                CType(documento, Inventor.PartDocument)
+            caja = docIPT.ComponentDefinition.RangeBox
+            propiedadesMasa = docIPT.ComponentDefinition.MassProperties
+        End If
+
+        If caja Is Nothing Then
+            Throw New Exception( _
+                "No se ha podido obtener la caja envolvente del modelo.")
+        End If
+
+        If propiedadesMasa Is Nothing Then
+            Throw New Exception( _
+                "No se han podido obtener las propiedades físicas del modelo.")
+        End If
+
+        ' Inventor trabaja internamente en cm y cm².
+        Dim dimensionX As Double = _
+            Math.Abs(caja.MaxPoint.X - caja.MinPoint.X) * 10.0
+        Dim dimensionY As Double = _
+            Math.Abs(caja.MaxPoint.Y - caja.MinPoint.Y) * 10.0
+        Dim dimensionZ As Double = _
+            Math.Abs(caja.MaxPoint.Z - caja.MinPoint.Z) * 10.0
+        Dim superficieM2 As Double = propiedadesMasa.Area / 10000.0
+
+        If dimensionX <= 0 OrElse dimensionY <= 0 OrElse dimensionZ <= 0 Then
+            Throw New Exception( _
+                "Inventor ha devuelto una dimensión igual o menor que cero.")
+        End If
+
+        If superficieM2 <= 0 Then
+            Throw New Exception( _
+                "Inventor ha devuelto una superficie igual o menor que cero.")
+        End If
+
+        ' Orientación igual que la hoja:
+        ' mayor = largo, intermedia = ancho, menor = profundidad de puerta.
+        Dim nombresEjes() As String = {"X", "Y", "Z"}
+        Dim dimensiones() As Double = {dimensionX, dimensionY, dimensionZ}
+        Dim indicesOrdenados() As Integer = {0, 1, 2}
+
+        For i As Integer = 0 To 1
+            For j As Integer = i + 1 To 2
+                If dimensiones(indicesOrdenados(j)) > _
+                   dimensiones(indicesOrdenados(i)) Then
+                    Dim temporal As Integer = indicesOrdenados(i)
+                    indicesOrdenados(i) = indicesOrdenados(j)
+                    indicesOrdenados(j) = temporal
+                End If
+            Next
+        Next
+
+        Dim indiceLargo As Integer = indicesOrdenados(0)
+        Dim indiceAncho As Integer = indicesOrdenados(1)
+        Dim indicePuerta As Integer = indicesOrdenados(2)
+
+        Dim medidaLargo As Double = dimensiones(indiceLargo)
+        Dim medidaAncho As Double = dimensiones(indiceAncho)
+        Dim medidaPuerta As Double = dimensiones(indicePuerta)
+        Dim pasoExactoLargo As Double = medidaLargo + SEPARACION_MM
+        Dim pasoExactoAncho As Double = medidaAncho + SEPARACION_MM
+        Dim medidaProductivaLargo As Double = _
+            RedondearMedidaProduccion(medidaLargo)
+        Dim medidaProductivaAncho As Double = _
+            RedondearMedidaProduccion(medidaAncho)
+        Dim pasoProductivoLargo As Double = _
+            medidaProductivaLargo + SEPARACION_MM
+        Dim pasoProductivoAncho As Double = _
+            medidaProductivaAncho + SEPARACION_MM
+
+        If medidaLargo > LANZA_LARGO_MM OrElse _
+           medidaAncho > LANZA_ANCHO_MM OrElse _
+           medidaAncho > ALTURA_MAX_MM OrElse _
+           medidaPuerta > PUERTA_MAX_MM Then
+            Throw New Exception( _
+                "La pieza no cumple las dimensiones de lanza, altura o puerta.")
+        End If
+
+        Dim piezasLargo As Integer = _
+            CInt(Math.Floor(LANZA_LARGO_MM / pasoProductivoLargo))
+        Dim piezasAncho As Integer = _
+            CInt(Math.Floor(LANZA_ANCHO_MM / pasoProductivoAncho))
+        Dim capacidadGeometrica As Integer = piezasLargo * piezasAncho
+
+        ' La hoja utiliza directamente el número geométrico de piezas.
+        ' No aplicar Math.Min(MAX_HUECOS, capacidadGeometrica).
+        Dim capacidadAplicada As Integer = capacidadGeometrica
+
+        If capacidadAplicada <= 0 Then
+            Throw New Exception( _
+                "La capacidad calculada de la lanza es igual a cero.")
+        End If
+
+        Dim kgRealPorLanza As Double = KG_OBSERVADOS / LANZAS_OBSERVADAS
+        Dim kgHojaUnidad As Double = _
+            KG_HOJA_POR_LANZA / capacidadAplicada
+        Dim kgRealUnidad As Double = kgRealPorLanza / capacidadAplicada
+        Dim segundosUnidad As Double = _
+            (MINUTOS_POR_LANZA * 60.0) / capacidadAplicada
+        Dim segundosCorregidos As Double = _
+            segundosUnidad * (1.0 + CORRECCION_TIEMPO / 100.0)
+
+        Dim descripcion As String = _
+            LeerPropiedadSeguimiento(documento, "Description")
+        Dim resultado As New System.Text.StringBuilder()
+
+        resultado.AppendLine("CÓDIGO: " & codigo)
+        If Not String.IsNullOrWhiteSpace(descripcion) Then
+            resultado.AppendLine("DESCRIPCIÓN: " & descripcion)
+        End If
+        resultado.AppendLine( _
+            "TIPO: " & If(esEnsamblaje, "IAM - PINTADO MONTADO", "IPT"))
+        resultado.AppendLine("UNIDADES CALCULADAS: 1")
+        resultado.AppendLine()
+
+        resultado.AppendLine("GEOMETRÍA INVENTOR")
+        resultado.AppendLine( _
+            "X x Y x Z: " & Formato(dimensionX, 1) & " x " & _
+            Formato(dimensionY, 1) & " x " & _
+            Formato(dimensionZ, 1) & " mm")
+        resultado.AppendLine( _
+            "Superficie calculada: " & Formato(superficieM2, 3) & " m²" & _
+            "  (informativa: no entra en el calculo)")
+        resultado.AppendLine()
+
+        resultado.AppendLine("CARGA TEÓRICA DE LA LANZA")
+        resultado.AppendLine( _
+            "Orientación: " & nombresEjes(indiceLargo) & " largo / " & _
+            nombresEjes(indiceAncho) & " ancho / " & _
+            nombresEjes(indicePuerta) & " puerta")
+        resultado.AppendLine( _
+            "Medidas: " & Formato(medidaLargo, 1) & " x " & _
+            Formato(medidaAncho, 1) & " x " & _
+            Formato(medidaPuerta, 1) & " mm")
+        resultado.AppendLine( _
+            "Paso exacto +150 mm: " & Formato(pasoExactoLargo, 1) & _
+            " x " & Formato(pasoExactoAncho, 1) & " mm")
+        resultado.AppendLine( _
+            "Medida productiva Excel: " & _
+            Formato(medidaProductivaLargo, 1) & " x " & _
+            Formato(medidaProductivaAncho, 1) & " mm")
+        resultado.AppendLine( _
+            "Paso productivo Excel: " & _
+            Formato(pasoProductivoLargo, 1) & " x " & _
+            Formato(pasoProductivoAncho, 1) & " mm")
+        resultado.AppendLine( _
+            "Disposición: " & piezasLargo & " x " & piezasAncho)
+        resultado.AppendLine( _
+            "Capacidad usada por la hoja: " & capacidadAplicada & _
+            " piezas/lanza")
+        resultado.AppendLine( _
+            "Dato instalación: " & MAX_GANCHOS & " ganchos / " & _
+            MAX_HUECOS & " huecos (informativo; no limita la fórmula)")
+        resultado.AppendLine()
+
+        ' El tiempo no depende del metodo de kg: es el mismo en los dos, por
+        ' eso va una sola vez en lugar de repetirse en cada bloque.
+        resultado.AppendLine("DETALLE DE PINTURA")
+        resultado.AppendLine( _
+            "Metodo hoja: " & Formato(KG_HOJA_POR_LANZA, 3) & " kg/lanza -> " & _
+            Formato(kgHojaUnidad, 4) & " kg/ud")
+        resultado.AppendLine( _
+            "Metodo real: " & Formato(KG_OBSERVADOS, 3) & " kg / " & _
+            LANZAS_OBSERVADAS & " lanzas = " & _
+            Formato(kgRealPorLanza, 3) & " kg/lanza -> " & _
+            Formato(kgRealUnidad, 4) & " kg/ud")
+        resultado.AppendLine()
+
+        resultado.AppendLine("DETALLE DE TIEMPO")
+        resultado.AppendLine( _
+            "Base: " & Formato(MINUTOS_POR_LANZA, 1) & " min/lanza")
+        resultado.AppendLine( _
+            "Bruto: " & Formato(segundosUnidad, 2) & " s/ud")
+        resultado.AppendLine( _
+            "Corregido " & Formato(CORRECCION_TIEMPO, 0) & " %: " & _
+            Formato(segundosCorregidos, 2) & " s/ud")
+        resultado.AppendLine()
+
+        resultado.AppendLine( _
+            "AVISO: ambos metodos son aproximaciones basadas en una " & _
+            "carga teorica completa de la lanza.")
+
+        If esEnsamblaje Then
+            resultado.AppendLine( _
+                "AVISO IAM: Inventor puede incluir caras interiores o de " & _
+                "contacto; el resultado es una aproximacion conservadora.")
+        End If
+
+        ' ---- Lo que se imputa, destacado y al final ----
+        Dim regla As String = New String("="c, 46)
+        resultado.AppendLine()
+        resultado.AppendLine(regla)
+        resultado.AppendLine(" DATOS PARA IMPUTAR" & New String(" "c, 9) & codigo)
+        resultado.AppendLine(regla)
+        resultado.AppendLine(LineaDato("Piezas por lanza", capacidadAplicada.ToString()))
+        resultado.AppendLine(LineaDato("Pintura (hoja)", Formato(kgHojaUnidad, 3) & " kg/ud"))
+        resultado.AppendLine(LineaDato("Pintura (real)", Formato(kgRealUnidad, 3) & " kg/ud"))
+        resultado.AppendLine(LineaDato("Tiempo por unidad", Formato(segundosCorregidos, 2) & " s/ud"))
+        resultado.AppendLine(regla)
+
+        ThisApplication.StatusBarText = _
+            "Cálculo completado para " & codigo & "."
+        System.Windows.Forms.MessageBox.Show( _
+            resultado.ToString(), _
+            "CÁLCULO DE PINTURA - " & codigo, _
+            System.Windows.Forms.MessageBoxButtons.OK, _
+            System.Windows.Forms.MessageBoxIcon.Information)
+
+    Catch ex As Exception
+        ThisApplication.StatusBarText = "Error calculando " & codigo & "."
+        MostrarError( _
+            "No se ha podido completar el cálculo." & vbCrLf & vbCrLf & _
+            ex.Message)
+    End Try
+
+End Sub
+
+Private Function LeerPropiedadSeguimiento( _
+    ByVal documento As Inventor.Document, _
+    ByVal nombrePropiedad As String) As String
+
+    Try
+        Dim conjunto As Inventor.PropertySet = _
+            documento.PropertySets.Item("Design Tracking Properties")
+        Dim propiedad As Inventor.Property = conjunto.Item(nombrePropiedad)
+        If propiedad Is Nothing OrElse propiedad.Value Is Nothing Then Return ""
+        Return CStr(propiedad.Value).Trim()
+    Catch
+        Return ""
+    End Try
+
+End Function
+
+Private Function ExtraerCodigoDesdeNombre(ByVal nombre As String) As String
+    If String.IsNullOrWhiteSpace(nombre) Then Return "SIN_CODIGO"
+
+    Dim limpio As String = nombre.Trim()
+    Dim separadores() As Char = {" "c, "-"c}
+    Dim posicion As Integer = limpio.IndexOfAny(separadores)
+
+    If posicion > 0 Then
+        limpio = limpio.Substring(0, posicion)
+    End If
+
+    Return limpio.Trim().ToUpperInvariant()
+End Function
+
+Private Function RedondearMedidaProduccion(ByVal valorMm As Double) As Double
+    Return Math.Round( _
+        valorMm / 100.0, _
+        0, _
+        System.MidpointRounding.AwayFromZero) * 100.0
+End Function
+
+' Alinea "etiqueta ....... valor" para que el bloque final se lea de un vistazo.
+Private Function LineaDato( _
+    ByVal etiqueta As String, _
+    ByVal valor As String) As String
+
+    Const ANCHO As Integer = 26
+    Dim relleno As String = etiqueta
+    If relleno.Length < ANCHO Then
+        relleno = relleno & " " & New String("."c, ANCHO - relleno.Length - 1)
+    End If
+    Return " " & relleno & " " & valor
+
+End Function
+
+Private Function Formato( _
+    ByVal valor As Double, _
+    ByVal decimales As Integer) As String
+
+    Return valor.ToString( _
+        "N" & decimales.ToString(), _
+        System.Globalization.CultureInfo.CurrentCulture)
+
+End Function
+
+Private Sub MostrarError(ByVal mensaje As String)
+    System.Windows.Forms.MessageBox.Show( _
+        mensaje, _
+        "CÁLCULO DE PINTURA - METALPLAK", _
+        System.Windows.Forms.MessageBoxButtons.OK, _
+        System.Windows.Forms.MessageBoxIcon.Error)
+End Sub
