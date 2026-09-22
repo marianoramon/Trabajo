@@ -124,3 +124,90 @@ def test_empty_folder(tmp_path):
 
     assert scanner.scan_ipt_files() == []
     assert scanner.scan_all() == []
+
+
+@pytest.fixture
+def planos_variados(tmp_path):
+    """Proyecto con planos nombrados como en taller (prefijos, revisiones, mayúsculas)."""
+    ipt_dir = tmp_path / "piezas"
+    dxf_dir = tmp_path / "corte"
+    dwf_dir = tmp_path / "planos"
+    for d in (ipt_dir, dxf_dir, dwf_dir):
+        d.mkdir()
+
+    casos = {
+        "A01956": "A01956_PLEGADO.idw",
+        "A01957": "PLANO A01957.idw",
+        "A01958": "A01958 REV B.IDW",
+        "A01959": "A01959.Idw",
+    }
+    for codigo, plano in casos.items():
+        (ipt_dir / f"{codigo}.ipt").write_text("ipt")
+        (dwf_dir / plano).write_text("idw")
+
+    # Pieza del sistema nuevo con mapeo explícito a otro código de plano
+    (ipt_dir / "A01960.ipt").write_text("ipt")
+    (dwf_dir / "P7788.idw").write_text("idw")
+    mappings = tmp_path / "mappings.csv"
+    mappings.write_text(
+        "codigo_pieza;codigo_corte;codigo_plegado\nA01960;A01960;P7788\n",
+        encoding="utf-8",
+    )
+
+    config = AppConfig(
+        ipt_folder=str(ipt_dir),
+        dxf_folder=str(dxf_dir),
+        dwf_folder=str(dwf_dir),
+    )
+    return FileScanner(config, CodeMapper(str(mappings))), ipt_dir, casos
+
+
+@pytest.mark.parametrize(
+    "codigo,plano",
+    [
+        ("A01956", "A01956_PLEGADO.idw"),
+        ("A01957", "PLANO A01957.idw"),
+        ("A01958", "A01958 REV B.IDW"),
+        ("A01959", "A01959.Idw"),
+    ],
+)
+def test_encuentra_planos_con_nombres_de_taller(planos_variados, codigo, plano):
+    scanner, ipt_dir, _ = planos_variados
+    result = scanner.scan_single_file(ipt_dir / f"{codigo}.ipt")
+    assert result.idw_path is not None, f"No se encontró el plano de {codigo}"
+    assert result.idw_path.name == plano
+
+
+def test_mapeo_explicito_gana_al_sistema_nuevo(planos_variados):
+    scanner, ipt_dir, _ = planos_variados
+    result = scanner.scan_single_file(ipt_dir / "A01960.ipt")
+    assert result.idw_path is not None
+    assert result.idw_path.name == "P7788.idw"
+
+
+def test_no_confunde_codigos_parecidos(tmp_path):
+    ipt_dir = tmp_path / "piezas"
+    dwf_dir = tmp_path / "planos"
+    ipt_dir.mkdir()
+    dwf_dir.mkdir()
+    (ipt_dir / "A01955.ipt").write_text("ipt")
+    (dwf_dir / "A019551.idw").write_text("idw")
+
+    config = AppConfig(
+        ipt_folder=str(ipt_dir), dxf_folder=str(dwf_dir), dwf_folder=str(dwf_dir)
+    )
+    scanner = FileScanner(config, CodeMapper(str(tmp_path / "mappings.csv")))
+    result = scanner.scan_single_file(ipt_dir / "A01955.ipt")
+    assert result.idw_path is None
+
+
+def test_scan_ipt_files_acepta_extension_en_mayusculas(tmp_path):
+    ipt_dir = tmp_path / "piezas"
+    ipt_dir.mkdir()
+    (ipt_dir / "A01955.IPT").write_text("ipt")
+
+    config = AppConfig(
+        ipt_folder=str(ipt_dir), dxf_folder=str(ipt_dir), dwf_folder=str(ipt_dir)
+    )
+    scanner = FileScanner(config, CodeMapper(str(tmp_path / "mappings.csv")))
+    assert len(scanner.scan_ipt_files()) == 1

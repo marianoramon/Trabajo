@@ -22,6 +22,9 @@ class SyncChecker:
                 result.dxf_status = SyncStatus.OK
         elif result.dxf_path is None:
             result.dxf_status = SyncStatus.MISSING
+        else:
+            # Archivo encontrado pero sin fecha legible
+            result.dxf_status = SyncStatus.ERROR
 
         # Verificar IDW
         if result.idw_path and result.idw_modified:
@@ -32,6 +35,9 @@ class SyncChecker:
                 result.idw_status = SyncStatus.OK
         elif result.idw_path is None:
             result.idw_status = SyncStatus.MISSING
+        else:
+            # Archivo encontrado pero sin fecha legible
+            result.idw_status = SyncStatus.ERROR
 
         # Verificar DWF
         if result.dwf_path and result.dwf_modified:
@@ -42,6 +48,9 @@ class SyncChecker:
                 result.dwf_status = SyncStatus.OK
         elif result.dwf_path is None:
             result.dwf_status = SyncStatus.MISSING
+        else:
+            # Archivo encontrado pero sin fecha legible
+            result.dwf_status = SyncStatus.ERROR
 
         return result
 

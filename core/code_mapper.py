@@ -11,8 +11,10 @@ from core.models import CodeMapping
 class CodeMapper:
     """Gestiona la correspondencia entre códigos de pieza, corte y plegado.
 
-    Sistema nuevo (A00280+): mismo código para corte y plegado.
-    Sistema antiguo: códigos diferentes, se leen de mappings.csv.
+    Prioridad de resolución:
+    1. Mapeo explícito en mappings.csv (aplica a cualquier código).
+    2. Sistema nuevo (A00280+): mismo código para corte y plegado.
+    3. Sistema antiguo sin mapeo: se asume el mismo código.
     """
 
     def __init__(self, mappings_file: str = "mappings.csv"):
@@ -90,21 +92,44 @@ class CodeMapper:
             return match.group(1).upper()
         return stem.upper()
 
+    @staticmethod
+    def code_in_filename(filename: str, code: str) -> bool:
+        """Indica si el nombre de archivo corresponde al código dado.
+
+        Acepta el código como palabra completa en cualquier posición del nombre,
+        de modo que planos como 'PLANO A01957.idw' o 'A01957 REV B.idw' se
+        asocian a la pieza A01957. No acepta coincidencias parciales
+        ('A019571' no es 'A01957').
+        """
+        if not code:
+            return False
+
+        stem = Path(filename).stem.upper()
+        code_upper = code.upper()
+
+        if stem == code_upper:
+            return True
+        if CodeMapper.extract_code_from_filename(filename) == code_upper:
+            return True
+
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(code_upper)}(?![A-Za-z0-9])"
+        return re.search(pattern, stem) is not None
+
     def get_dxf_code(self, pieza_code: str) -> str:
         """Obtiene el código DXF (corte) para un código de pieza.
 
-        Si es sistema nuevo, devuelve el mismo código.
-        Si es sistema antiguo, busca en la tabla de mapeos.
+        Un mapeo explícito tiene prioridad. Si no lo hay y es sistema nuevo,
+        devuelve el mismo código.
         """
         code_upper = pieza_code.upper()
 
-        if self.is_new_system(pieza_code):
-            return pieza_code
-
-        # Buscar en mapeos
+        # Un mapeo explícito siempre manda, también en el sistema nuevo
         mapping = self._index_by_pieza.get(code_upper)
         if mapping and mapping.codigo_corte:
             return mapping.codigo_corte
+
+        if self.is_new_system(pieza_code):
+            return pieza_code
 
         # Buscar por plegado (el código podría ser de plegado)
         mapping = self._index_by_plegado.get(code_upper)
@@ -117,18 +142,18 @@ class CodeMapper:
     def get_drawing_code(self, pieza_code: str) -> str:
         """Obtiene el código de plano (plegado) para un código de pieza.
 
-        Si es sistema nuevo, devuelve el mismo código.
-        Si es sistema antiguo, busca en la tabla de mapeos.
+        Un mapeo explícito tiene prioridad. Si no lo hay y es sistema nuevo,
+        devuelve el mismo código.
         """
         code_upper = pieza_code.upper()
 
-        if self.is_new_system(pieza_code):
-            return pieza_code
-
-        # Buscar en mapeos
+        # Un mapeo explícito siempre manda, también en el sistema nuevo
         mapping = self._index_by_pieza.get(code_upper)
         if mapping and mapping.codigo_plegado:
             return mapping.codigo_plegado
+
+        if self.is_new_system(pieza_code):
+            return pieza_code
 
         # Buscar por corte (el código podría ser de corte)
         mapping = self._index_by_corte.get(code_upper)

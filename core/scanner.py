@@ -20,23 +20,38 @@ class FileScanner:
     ) -> Optional[Path]:
         """Busca un archivo por código en una carpeta (recursivamente).
 
-        Busca archivos cuyo nombre empiece con el código dado.
+        La extensión se compara sin distinguir mayúsculas ('.idw', '.IDW',
+        '.Idw'). Se prefiere el nombre exacto; después el código al inicio del
+        nombre; y por último el código como palabra dentro del nombre
+        ('PLANO A01957.idw').
         """
-        if not folder.exists():
+        if not folder.exists() or not code:
             return None
 
         code_upper = code.upper()
-        for ext in extensions:
-            # Búsqueda directa: código.ext
-            direct = folder / f"{code}{ext}"
-            if direct.exists():
-                return direct
+        exts = {
+            (ext if ext.startswith(".") else f".{ext}").lower()
+            for ext in extensions
+        }
 
-            # Búsqueda recursiva
-            for f in folder.rglob(f"*{ext}"):
-                file_code = CodeMapper.extract_code_from_filename(f.name)
-                if file_code == code_upper:
-                    return f
+        exact: list[Path] = []
+        by_prefix: list[Path] = []
+        by_token: list[Path] = []
+
+        for f in sorted(folder.rglob("*")):
+            if f.suffix.lower() not in exts or not f.is_file():
+                continue
+
+            if f.stem.upper() == code_upper:
+                exact.append(f)
+            elif CodeMapper.extract_code_from_filename(f.name) == code_upper:
+                by_prefix.append(f)
+            elif CodeMapper.code_in_filename(f.name, code_upper):
+                by_token.append(f)
+
+        for candidates in (exact, by_prefix, by_token):
+            if candidates:
+                return candidates[0]
 
         return None
 
@@ -49,7 +64,10 @@ class FileScanner:
         ipt_folder = Path(self.config.ipt_folder)
         if not ipt_folder.exists():
             return []
-        return sorted(ipt_folder.rglob("*.ipt"))
+        return sorted(
+            f for f in ipt_folder.rglob("*")
+            if f.suffix.lower() == ".ipt" and f.is_file()
+        )
 
     def scan_single_file(self, ipt_path: Path) -> FileCheckResult:
         """Verifica una única pieza .ipt y busca sus archivos relacionados."""
@@ -65,7 +83,7 @@ class FileScanner:
         # Buscar DXF
         dxf_code = self.code_mapper.get_dxf_code(codigo)
         dxf_folder = Path(self.config.dxf_folder)
-        dxf_path = self._find_file_by_code(dxf_folder, dxf_code, [".dxf", ".DXF"])
+        dxf_path = self._find_file_by_code(dxf_folder, dxf_code, [".dxf"])
         if dxf_path:
             result.dxf_path = dxf_path
             result.dxf_modified = self._get_mtime(dxf_path)
@@ -73,13 +91,13 @@ class FileScanner:
         # Buscar IDW (plano)
         drawing_code = self.code_mapper.get_drawing_code(codigo)
         dwf_folder = Path(self.config.dwf_folder)
-        idw_path = self._find_file_by_code(dwf_folder, drawing_code, [".idw", ".IDW"])
+        idw_path = self._find_file_by_code(dwf_folder, drawing_code, [".idw"])
         if idw_path:
             result.idw_path = idw_path
             result.idw_modified = self._get_mtime(idw_path)
 
         # Buscar DWF
-        dwf_path = self._find_file_by_code(dwf_folder, drawing_code, [".dwf", ".DWF"])
+        dwf_path = self._find_file_by_code(dwf_folder, drawing_code, [".dwf"])
         if dwf_path:
             result.dwf_path = dwf_path
             result.dwf_modified = self._get_mtime(dwf_path)
