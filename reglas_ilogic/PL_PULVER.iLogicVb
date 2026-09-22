@@ -1903,13 +1903,36 @@ Sub CrearPlanoPlegadoPiezaIndividualNucleo(ByVal invApp As Inventor.Application,
     ' CREAR PLANO
     '---------------------------------------------------------
 
-    Dim drawingDoc As DrawingDocument = TryCast(invApp.Documents.Open(rutaPlantilla, True), DrawingDocument)
+    ' v8.9 FIX CRITICO: Documents.Add crea un plano NUEVO *a partir de* la
+    ' plantilla. Antes se usaba Documents.Open, que abre el PROPIO archivo
+    ' de plantilla: el borrado de vistas, el A4 forzado, las cotas, los
+    ' simbolos, las propiedades y el cajetin se aplicaban SOBRE la plantilla
+    ' de la biblioteca. Cualquier guardado la machacaba, incluido el
+    ' "¿Guardar cambios?" que Inventor muestra al cerrarla tras un fallo.
+    ' Con Documents.Add la plantilla en Q: no se toca nunca.
+    Dim drawingDoc As DrawingDocument = TryCast( _
+        invApp.Documents.Add( _
+            DocumentTypeEnum.kDrawingDocumentObject, _
+            rutaPlantilla, _
+            True), _
+        DrawingDocument)
 
     ' Se publica al envoltorio para poder cerrarlo si algo falla despues.
     drawingDocCreado = drawingDoc
 
     If drawingDoc Is Nothing Then
-        Throw New Exception("No se ha podido abrir el IDW base.")
+        Throw New Exception( _
+            "No se ha podido crear el plano a partir de la plantilla:" & vbCrLf & _
+            rutaPlantilla)
+    End If
+
+    ' Seguro adicional: si por lo que sea el documento en curso fuese el
+    ' propio archivo de plantilla, se aborta antes de tocar nada.
+    If String.Equals(drawingDoc.FullFileName, rutaPlantilla, _
+                     StringComparison.OrdinalIgnoreCase) Then
+        Throw New Exception( _
+            "El documento abierto ES la plantilla. Se aborta para no" & _
+            " modificarla:" & vbCrLf & rutaPlantilla)
     End If
 
     Dim sheet As Sheet = drawingDoc.ActiveSheet
@@ -2087,19 +2110,32 @@ Sub CrearPlanoPlegadoPiezaIndividualNucleo(ByVal invApp As Inventor.Application,
 
     cotasCreadas = cotasPerfil + cotasLateral + cotasSuperior + cotasDesarrollo
 
-    If cotasPerfil <> 2 OrElse cotasLateral <> 3 OrElse _
-       cotasSuperior <> 1 OrElse cotasDesarrollo <> 2 OrElse _
-       cotasCreadas <> 8 OrElse _
-       sheet.DrawingDimensions.GeneralDimensions.Count <> 8 Then
-        Throw New Exception( _
-            "La acotacion automatica no ha creado el patron exacto de 8 cotas." & vbCrLf & _
-            "Pieza: " & codPleg & vbCrLf & _
-            "Cotas en la hoja: " & sheet.DrawingDimensions.GeneralDimensions.Count.ToString() & vbCrLf & _
-            "Perfil: " & cotasPerfil.ToString() & " de 2" & vbCrLf & _
-            "Seccion lateral: " & cotasLateral.ToString() & " de 3" & vbCrLf & _
-            "Superior: " & cotasSuperior.ToString() & " de 1" & vbCrLf & _
-            "Desarrollo: " & cotasDesarrollo.ToString() & " de 2" & vbCrLf & _
-            "El plano no se guarda con cotas incorrectas o incompletas.")
+    ' v8.9 FIX: antes, si la acotacion no daba EXACTAMENTE el patron
+    ' 2-3-1-2, se lanzaba una excepcion y se perdia el plano entero. Ese
+    ' patron corresponde a una pieza tipo canal: cualquier otra geometria
+    ' (L simple, plegado unico, varios plegados) no puede darlo y nunca
+    ' generaba plano. Ahora el plano SE GUARDA con las cotas conseguidas y
+    ' se avisa de cuales faltan para rematarlas a mano.
+    Dim informeCotas As String = _
+        "Cotas: perfil " & cotasPerfil.ToString() & "/2, " & _
+        "seccion " & cotasLateral.ToString() & "/3, " & _
+        "superior " & cotasSuperior.ToString() & "/1, " & _
+        "desarrollo " & cotasDesarrollo.ToString() & "/2 " & _
+        "(total " & cotasCreadas.ToString() & "/8)."
+
+    Dim acotacionCompleta As Boolean = _
+        (cotasPerfil = 2 AndAlso cotasLateral = 3 AndAlso _
+         cotasSuperior = 1 AndAlso cotasDesarrollo = 2 AndAlso _
+         cotasCreadas = 8)
+
+    If Not acotacionCompleta Then
+        MessageBox.Show( _
+            "La acotacion automatica no ha completado el patron de 8 cotas" & vbCrLf & _
+            "en la pieza " & codPleg & "." & vbCrLf & vbCrLf & _
+            informeCotas & vbCrLf & vbCrLf & _
+            "El plano SE GENERA igualmente con las cotas conseguidas." & vbCrLf & _
+            "Revisa y completa la acotacion a mano antes de mandarlo a taller.", _
+            "Acotacion incompleta")
     End If
 
     '---------------------------------------------------------
@@ -2149,6 +2185,8 @@ Sub CrearPlanoPlegadoPiezaIndividualNucleo(ByVal invApp As Inventor.Application,
     EscribirPropiedadUsuario(drawingDoc, "COD DE PLEGADO", codPlegadoReal)
     EscribirPropiedadUsuario(drawingDoc, "MATERIAL", material)
     EscribirPropiedadUsuario(drawingDoc, "VERSION_REGLA_PLEGADO", "8.9-ENSAMBLAJE")
+    EscribirPropiedadUsuario(drawingDoc, "DIAGNOSTICO_COTAS", informeCotas)
+    EscribirPropiedadUsuario(drawingDoc, "ACOTACION_COMPLETA", IIf(acotacionCompleta, "SI", "NO").ToString())
     EscribirPropiedadUsuario(drawingDoc, "PROYECTO", proyecto)
     EscribirPropiedadUsuario(drawingDoc, "DISENADOR", disenador)
     EscribirPropiedadUsuario(drawingDoc, "ESTADO_DISENO", estadoDiseno)
@@ -2176,7 +2214,23 @@ Sub CrearPlanoPlegadoPiezaIndividualNucleo(ByVal invApp As Inventor.Application,
     EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Part Number", articuloCajetin)
     EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Stock Number", articuloCajetin)
 
-    RellenarPromptsCajetin(sheet, articuloCajetin, centroTrabajo, escalaTexto, articuloCajetin)
+    Dim informeCajetin As String = _
+        RellenarPromptsCajetin(sheet, articuloCajetin, centroTrabajo, escalaTexto, articuloCajetin)
+
+    EscribirPropiedadUsuario(drawingDoc, "DIAGNOSTICO_CAJETIN", informeCajetin)
+
+    ' Si no se ha rellenado ni un campo, el plano sale con el cajetin en
+    ' blanco. Se avisa en el momento en lugar de descubrirlo en taller.
+    If informeCajetin.StartsWith("Cajetin: 0 campos") OrElse _
+       informeCajetin.StartsWith("Cajetin: la hoja") OrElse _
+       informeCajetin.StartsWith("Cajetin: sin") OrElse _
+       informeCajetin.StartsWith("Cajetin: error") Then
+        MessageBox.Show( _
+            "El cajetin del plano " & articuloCajetin & " NO se ha rellenado." & vbCrLf & vbCrLf & _
+            informeCajetin & vbCrLf & vbCrLf & _
+            "El plano se genera igualmente, pero hay que revisar la plantilla.", _
+            "Cajetin sin rellenar")
+    End If
 
     EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Part Number", articuloCajetin)
     EscribirPropiedad(drawingDoc, "Design Tracking Properties", "Stock Number", articuloCajetin)
@@ -2784,18 +2838,29 @@ End Sub
 ' RELLENO DE CAJETIN
 '---------------------------------------------------------
 
-Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
+Function RellenarPromptsCajetin(ByVal sheet As Sheet, _
                            ByVal articulo As String, _
                            ByVal centro As String, _
                            ByVal escala As String, _
-                           ByVal referenciaCliente As String)
+                           ByVal referenciaCliente As String) As String
+
+    ' v8.9 FIX: antes era un Sub con un Try/Catch que se tragaba TODOS los
+    ' errores. Si la plantilla no tenia entradas de texto reconocibles, o
+    ' sus campos no eran "prompted entries", el cajetin quedaba vacio y la
+    ' regla no lo mencionaba. Ahora devuelve un informe: cuantos campos se
+    ' han rellenado y que rotulos se han encontrado en el cajetin, para
+    ' poder ajustar la deteccion a la plantilla real.
+    Dim rellenados As Integer = 0
+    Dim fallidos As Integer = 0
+    Dim rotulos As New System.Collections.Generic.List(Of String)
+
     Try
-        If sheet Is Nothing Then Exit Sub
-        If sheet.TitleBlock Is Nothing Then Exit Sub
+        If sheet Is Nothing Then Return "Cajetin: no hay hoja."
+        If sheet.TitleBlock Is Nothing Then Return "Cajetin: la hoja no tiene cajetin."
 
         Dim tb As TitleBlock = sheet.TitleBlock
         Dim def As TitleBlockDefinition = tb.Definition
-        If def Is Nothing Then Exit Sub
+        If def Is Nothing Then Return "Cajetin: sin definicion de cajetin."
 
         For Each txt As Inventor.TextBox In def.Sketch.TextBoxes
             Try
@@ -2817,6 +2882,8 @@ Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
 
                 Dim tu As String = t.ToUpper()
 
+                If Trim(t) <> "" Then rotulos.Add(Trim(t))
+
                 If tu.Contains("ARTICULO") Or _
                    tu.Contains("ARTÍCULO") Or _
                    tu.Contains("Nº DE PIEZA") Or _
@@ -2825,21 +2892,27 @@ Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
                    tu.Contains("NÚMERO DE PIEZA") Then
                     Try
                         tb.SetPromptResultText(txt, articulo)
+                        rellenados += 1
                     Catch
+                        fallidos += 1
                     End Try
                 End If
 
                 If tu.Contains("CENTRO") Then
                     Try
                         tb.SetPromptResultText(txt, centro)
+                        rellenados += 1
                     Catch
+                        fallidos += 1
                     End Try
                 End If
 
                 If tu.Contains("ESCALA") Then
                     Try
                         tb.SetPromptResultText(txt, escala)
+                        rellenados += 1
                     Catch
+                        fallidos += 1
                     End Try
                 End If
 
@@ -2852,16 +2925,32 @@ Sub RellenarPromptsCajetin(ByVal sheet As Sheet, _
                    tu.Contains("<CÓDIGO CLIENTE>") Then
                     Try
                         tb.SetPromptResultText(txt, referenciaCliente)
+                        rellenados += 1
                     Catch
+                        fallidos += 1
                     End Try
                 End If
 
             Catch
             End Try
         Next
-    Catch
+    Catch ex As Exception
+        Return "Cajetin: error al recorrer el cajetin. " & ex.Message
     End Try
-End Sub
+
+    Dim informe As String = _
+        "Cajetin: " & rellenados.ToString() & " campos rellenados, " & _
+        fallidos.ToString() & " fallidos."
+
+    If rellenados = 0 Then
+        informe = informe & vbCrLf & _
+            "Rotulos encontrados en el cajetin (" & rotulos.Count.ToString() & "): " & _
+            String.Join(" | ", rotulos.ToArray())
+    End If
+
+    Return informe
+
+End Function
 
 '---------------------------------------------------------
 ' VISUALIZACION DE VISTAS
