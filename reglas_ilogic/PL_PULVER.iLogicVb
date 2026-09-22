@@ -2687,6 +2687,68 @@ End Sub
 ' SIMBOLO DE BOCETO COD PLEGADO PULVER
 '---------------------------------------------------------
 
+Function BuscarDefinicionSimbolo(ByVal drawingDoc As DrawingDocument, _
+                                ByVal nombreSimbolo As String) As SketchedSymbolDefinition
+
+    ' v8.9 FIX: la busqueda del simbolo era por nombre EXACTO
+    ' (SketchedSymbolDefinitions.Item). Bastaba un acento, un espacio de
+    ' mas o una mayuscula distinta en la plantilla para que fallara y, en
+    ' el caso del cuadro de datos, se perdia el plano entero. Ahora:
+    ' 1) nombre exacto, 2) nombre normalizado (sin acentos, espacios ni
+    ' signos), 3) coincidencia parcial normalizada.
+    If drawingDoc Is Nothing Then Return Nothing
+    If Trim(nombreSimbolo) = "" Then Return Nothing
+
+    Try
+        Return drawingDoc.SketchedSymbolDefinitions.Item(nombreSimbolo)
+    Catch
+    End Try
+
+    Dim objetivo As String = NormalizarTextoCodigoPlegado(nombreSimbolo)
+
+    For Each d As SketchedSymbolDefinition In drawingDoc.SketchedSymbolDefinitions
+        Try
+            If NormalizarTextoCodigoPlegado(d.Name) = objetivo Then Return d
+        Catch
+        End Try
+    Next
+
+    For Each d As SketchedSymbolDefinition In drawingDoc.SketchedSymbolDefinitions
+        Try
+            Dim n As String = NormalizarTextoCodigoPlegado(d.Name)
+            If n.Contains(objetivo) OrElse objetivo.Contains(n) Then Return d
+        Catch
+        End Try
+    Next
+
+    Return Nothing
+
+End Function
+
+
+Function ListarDefinicionesSimbolo(ByVal drawingDoc As DrawingDocument) As String
+
+    ' Lista los simbolos de boceto que SI existen en el plano, para poder
+    ' corregir el nombre configurado en lugar de adivinarlo.
+    Dim nombres As New System.Collections.Generic.List(Of String)
+
+    Try
+        For Each d As SketchedSymbolDefinition In drawingDoc.SketchedSymbolDefinitions
+            Try
+                nombres.Add("'" & d.Name & "'")
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+
+    If nombres.Count = 0 Then Return "(la plantilla no tiene ningun simbolo de boceto)"
+
+    Return String.Join(", ", nombres.ToArray())
+
+End Function
+
+
 Function InsertarSimboloDatosPlegado(ByVal drawingDoc As DrawingDocument, _
                                      ByVal sheet As Sheet, _
                                      ByVal nombreSimbolo As String, _
@@ -2695,10 +2757,24 @@ Function InsertarSimboloDatosPlegado(ByVal drawingDoc As DrawingDocument, _
                                      ByVal codCorte As String, _
                                      ByVal espesorTexto As String, _
                                      ByVal codPlegado As String) As Boolean
-    Try
-        Dim def As SketchedSymbolDefinition = _
-            drawingDoc.SketchedSymbolDefinitions.Item(nombreSimbolo)
+    If punto Is Nothing Then
+        Throw New Exception( _
+            "No hay punto de insercion para el simbolo '" & nombreSimbolo & "'. " & _
+            "La distribucion de vistas no ha llegado a fijarlo.")
+    End If
 
+    Dim def As SketchedSymbolDefinition = _
+        BuscarDefinicionSimbolo(drawingDoc, nombreSimbolo)
+
+    If def Is Nothing Then
+        Throw New Exception( _
+            "No existe el simbolo de boceto '" & nombreSimbolo & "' en la plantilla." & vbCrLf & _
+            "Simbolos disponibles: " & ListarDefinicionesSimbolo(drawingDoc) & vbCrLf & vbCrLf & _
+            "Corrige NOMBRE_SIMBOLO_DATOS al principio de la regla o anade " & _
+            "el simbolo a la plantilla base.")
+    End If
+
+    Try
         ' Inventor exige exactamente un valor por cada texto <Prompt>, en el
         ' mismo orden de la definicion. Se detecta cada campo para que el
         ' simbolo DATOS PLEGADO PULVER salga completo y con datos correctos.
@@ -2775,8 +2851,9 @@ Function InsertarSimboloDatosPlegado(ByVal drawingDoc As DrawingDocument, _
 
     Catch ex As Exception
         Throw New Exception( _
-            "No se ha encontrado o no se ha podido insertar el símbolo de boceto '" & _
-            nombreSimbolo & "'. Detalle: " & ex.Message)
+            "No se ha podido insertar el simbolo de boceto '" & nombreSimbolo & _
+            "' (definicion encontrada: '" & def.Name & "')." & vbCrLf & _
+            "Detalle: " & ex.Message)
     End Try
 End Function
 
@@ -2824,7 +2901,11 @@ Sub BorrarSimbolosExistentes(ByVal sheet As Sheet, ByVal nombreSimbolo As String
         For i As Integer = sheet.SketchedSymbols.Count To 1 Step -1
             Dim s As SketchedSymbol = sheet.SketchedSymbols.Item(i)
             Try
-                If s.Definition.Name.ToUpper() = nombreSimbolo.ToUpper() Then
+                ' Comparacion normalizada: con la comparacion exacta, un
+                ' acento o un espacio distinto dejaba el simbolo viejo en la
+                ' hoja y se apilaba otro encima en cada ejecucion.
+                If NormalizarTextoCodigoPlegado(s.Definition.Name) = _
+                   NormalizarTextoCodigoPlegado(nombreSimbolo) Then
                     s.Delete()
                 End If
             Catch
@@ -3693,27 +3774,16 @@ Sub InsertarSimboloPosicion(ByVal drawingDoc As DrawingDocument, _
     Dim datosInf As Double = puntoSimboloDatos.Y - 2.45
     Dim datosSup As Double = puntoSimboloDatos.Y + 2.45
 
-    Dim def As SketchedSymbolDefinition = Nothing
-    Try
-        def = drawingDoc.SketchedSymbolDefinitions.Item(nombreSimboloPosicion)
-    Catch
-        Dim objetivo As String = NormalizarTextoCodigoPlegado(nombreSimboloPosicion)
-        For Each d As SketchedSymbolDefinition In drawingDoc.SketchedSymbolDefinitions
-            Try
-                If NormalizarTextoCodigoPlegado(d.Name) = objetivo Then
-                    def = d
-                    Exit For
-                End If
-            Catch
-            End Try
-        Next
-    End Try
+    Dim def As SketchedSymbolDefinition = _
+        BuscarDefinicionSimbolo(drawingDoc, nombreSimboloPosicion)
 
     If def Is Nothing Then
         Throw New Exception( _
             "La pieza tiene posicion de plegado pero no se ha encontrado el " & _
             "simbolo de boceto '" & nombreSimboloPosicion & "' en la plantilla." & vbCrLf & _
-            "Anade el simbolo a la plantilla base y vuelve a ejecutar la regla.")
+            "Simbolos disponibles: " & ListarDefinicionesSimbolo(drawingDoc) & vbCrLf & vbCrLf & _
+            "Corrige NOMBRE_SIMBOLO_POSICION al principio de la regla o anade " & _
+            "el simbolo a la plantilla base.")
     End If
 
     Dim candidatos As New System.Collections.Generic.List(Of Point2d)
