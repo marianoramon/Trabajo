@@ -2219,6 +2219,11 @@ Sub CrearPlanoPlegadoPiezaIndividualNucleo(ByVal invApp As Inventor.Application,
 
     EscribirPropiedadUsuario(drawingDoc, "DIAGNOSTICO_CAJETIN", informeCajetin)
 
+    ' v8.9 FIX: la regla nunca escribia la fecha del plano. Se fija aqui,
+    ' antes de guardar, para que el cajetin la muestre al abrirlo.
+    Dim informeFecha As String = EscribirFechaPlano(drawingDoc, sheet, DateTime.Now)
+    EscribirPropiedadUsuario(drawingDoc, "DIAGNOSTICO_FECHA", informeFecha)
+
     ' Si no se ha rellenado ni un campo, el plano sale con el cajetin en
     ' blanco. Se avisa en el momento en lugar de descubrirlo en taller.
     If informeCajetin.StartsWith("Cajetin: 0 campos") OrElse _
@@ -2918,6 +2923,89 @@ End Sub
 '---------------------------------------------------------
 ' RELLENO DE CAJETIN
 '---------------------------------------------------------
+
+Function EscribirFechaPlano(ByVal drawingDoc As DrawingDocument, _
+                            ByVal sheet As Sheet, _
+                            ByVal fecha As DateTime) As String
+
+    ' v8.9: fecha del plano en los tres sitios de los que puede leerla un
+    ' cajetin de Inventor, porque no se sabe cual usa la plantilla:
+    '
+    ' 1) iProperty "Creation Time" (campo "Fecha de creacion" del cajetin).
+    '    Es de tipo FECHA: hay que asignarle un DateTime. EscribirPropiedad
+    '    pasa texto y Inventor lo rechaza en silencio, por eso va aparte.
+    ' 2) Propiedades personalizadas FECHA / FECHA PLANO / FECHA_PLANO, por
+    '    si el cajetin tiene un campo enlazado a una de ellas.
+    ' 3) Entradas solicitadas (prompted entries) del cajetin cuyo rotulo
+    '    contenga "FECHA".
+    '
+    ' No se tocan "Date Checked" ni "Mfg Approved Date": son las fechas de
+    ' REVISADO y APROBADO y ponerles la fecha de hoy daria por revisado un
+    ' plano que nadie ha revisado.
+
+    Dim fechaTexto As String = fecha.ToString("dd/MM/yyyy")
+    Dim resultado As New System.Collections.Generic.List(Of String)
+
+    ' 1) Creation Time
+    Try
+        drawingDoc.PropertySets.Item("Design Tracking Properties") _
+            .Item("Creation Time").Value = fecha
+        resultado.Add("Creation Time OK")
+    Catch ex As Exception
+        resultado.Add("Creation Time FALLO (" & ex.Message & ")")
+    End Try
+
+    ' 2) Propiedades personalizadas
+    EscribirPropiedadUsuario(drawingDoc, "FECHA", fechaTexto)
+    EscribirPropiedadUsuario(drawingDoc, "FECHA PLANO", fechaTexto)
+    EscribirPropiedadUsuario(drawingDoc, "FECHA_PLANO", fechaTexto)
+    resultado.Add("personalizadas FECHA OK")
+
+    ' 3) Entradas solicitadas del cajetin
+    Dim promptsFecha As Integer = 0
+
+    Try
+        If sheet IsNot Nothing AndAlso sheet.TitleBlock IsNot Nothing Then
+            Dim tb As TitleBlock = sheet.TitleBlock
+
+            For Each txt As Inventor.TextBox In tb.Definition.Sketch.TextBoxes
+                Try
+                    Dim t As String = ""
+                    Try
+                        t = txt.FormattedText
+                    Catch
+                        t = ""
+                    End Try
+                    If t = "" Then
+                        Try
+                            t = txt.Text
+                        Catch
+                            t = ""
+                        End Try
+                    End If
+
+                    If UCase(t).Contains("FECHA") OrElse UCase(t).Contains("DATE") Then
+                        Try
+                            tb.SetPromptResultText(txt, fechaTexto)
+                            promptsFecha += 1
+                        Catch
+                            ' No es una entrada solicitada: es un campo de
+                            ' propiedad, que ya cubren los pasos 1 y 2.
+                        End Try
+                    End If
+                Catch
+                End Try
+            Next
+        End If
+    Catch
+    End Try
+
+    resultado.Add("entradas FECHA del cajetin: " & promptsFecha.ToString())
+
+    Return "Fecha " & fechaTexto & ": " & String.Join("; ", resultado.ToArray())
+
+End Function
+
 
 Function RellenarPromptsCajetin(ByVal sheet As Sheet, _
                            ByVal articulo As String, _
