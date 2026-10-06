@@ -107,9 +107,6 @@
     Dim RUTA_BASE_PLANOS_IDW As String = _
         "Q:\DISEÑOS\PLANOS PRODUCCIÓN"
 
-    Dim RUTA_BASE_PIEZAS As String = _
-        "Q:\DISEÑOS\60- PULVER AGRO"
-
     Dim NOMBRE_CARPETA_SALIDA As String = "02_PLANOS_PLEGADO"
     Dim NOMBRE_SIMBOLO_DATOS As String = "DATOS PLEGADO PULVER"
     Dim NOMBRE_SIMBOLO_POSICION As String = "OJO POSICIÓN"
@@ -291,77 +288,13 @@
     End Try
 
     '---------------------------------------------------------
-    ' v8.7: PASO 3 - COPIAR IPT (YA CON EL CODIGO DENTRO)
+    ' v9.0: SIN COPIA DEL IPT
     '---------------------------------------------------------
-
-    Dim carpetaPieza As String = _
-        BuscarCarpetaPiezaPorCodigo(RUTA_BASE_PIEZAS, codigoPieza)
-
-    If carpetaPieza = "" Then
-        MessageBox.Show( _
-            "No se ha encontrado la carpeta de rango de la pieza." & vbCrLf & vbCrLf & _
-            "Código: " & codigoPieza & vbCrLf & _
-            "Raíz: " & RUTA_BASE_PIEZAS, _
-            "Copia y plano de plegado")
-        Exit Sub
-    End If
-
-    Dim rutaPiezaDestino As String = _
-        System.IO.Path.Combine(carpetaPieza, codigoPieza & ".ipt")
-
-    If Not CopiarPiezaConConfirmacionIntegrada( _
-        invApp, _
-        piezaOrigen.FullFileName, _
-        rutaPiezaDestino) Then
-
-        Exit Sub
-    End If
-
-    Dim partDoc As PartDocument = Nothing
-
-    If String.Equals( _
-        piezaOrigen.FullFileName, _
-        rutaPiezaDestino, _
-        StringComparison.OrdinalIgnoreCase) Then
-
-        partDoc = piezaOrigen
-    Else
-        ' Cerrar cualquier version antigua de la copia que Inventor
-        ' tuviera en memoria (sin propiedad) antes de abrir la nueva.
-        CerrarDocumentoPorRutaIntegrada(invApp, rutaPiezaDestino)
-        partDoc = ObtenerOAbrirPiezaIntegrada(invApp, rutaPiezaDestino)
-    End If
-
-    If partDoc Is Nothing Then
-        MessageBox.Show( _
-            "La pieza se ha copiado, pero no se ha podido abrir:" & vbCrLf & vbCrLf & _
-            rutaPiezaDestino, _
-            "Copia y plano de plegado")
-        Exit Sub
-    End If
-
-    '---------------------------------------------------------
-    ' v8.7: PASO 4 - VERIFICAR EL CODIGO EN LA COPIA (EN DISCO)
-    '---------------------------------------------------------
-    Try
-        If Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO")) = "" Then
-            ' Respaldo: escribir y guardar directamente en la copia.
-            EscribirPropiedadUsuario(partDoc, "COD DE PLEGADO", codigoPlegadoAsignado)
-            partDoc.Save()
-
-            If Trim(LeerPropiedadUsuario(partDoc, "COD DE PLEGADO")) = "" Then
-                Throw New Exception("La propiedad no se puede releer tras guardar.")
-            End If
-        End If
-    Catch ex As Exception
-        MessageBox.Show( _
-            "AVISO: no se ha podido guardar el COD DE PLEGADO en la copia de la pieza:" & vbCrLf & _
-            rutaPiezaDestino & vbCrLf & vbCrLf & _
-            "Detalle: " & ex.Message & vbCrLf & vbCrLf & _
-            "El plano se generara igualmente con el codigo " & codigoPlegadoAsignado & ", " & _
-            "pero revisa las iProperties de la copia (archivo bloqueado o de solo lectura).", _
-            "Código de plegado - copia")
-    End Try
+    ' La regla ya no copia el IPT a ninguna carpeta. El plano se genera
+    ' a partir del IPT original y queda vinculado a el, en la ruta desde
+    ' la que se ejecuta la regla.
+    Dim partDoc As PartDocument = piezaOrigen
+    Dim rutaPieza As String = piezaOrigen.FullFileName
 
     '---------------------------------------------------------
     ' CALCULAR RUTAS FINALES
@@ -401,8 +334,8 @@
         End If
 
         MessageBox.Show( _
-            "La pieza se ha copiado correctamente (con COD DE PLEGADO " & codigoPlegadoAsignado & "):" & vbCrLf & _
-            rutaPiezaDestino & vbCrLf & vbCrLf & _
+            "Pieza (con COD DE PLEGADO " & codigoPlegadoAsignado & "):" & vbCrLf & _
+            rutaPieza & vbCrLf & vbCrLf & _
             "El plano YA EXISTÍA y NO se ha regenerado:" & vbCrLf & rutaIDW & vbCrLf & vbCrLf & _
             "Se ha abierto para que puedas editarlo y modificarlo manualmente." & vbCrLf & _
             "Recuerda reexportar el DWF si haces cambios.", _
@@ -450,7 +383,7 @@
 
         MessageBox.Show( _
             "Proceso finalizado correctamente." & vbCrLf & vbCrLf & _
-            "Pieza:" & vbCrLf & rutaPiezaDestino & vbCrLf & vbCrLf & _
+            "Pieza:" & vbCrLf & rutaPieza & vbCrLf & vbCrLf & _
             "COD DE PLEGADO: " & codigoPlegadoAsignado & vbCrLf & vbCrLf & _
             "Plano:" & vbCrLf & rutaIDW & vbCrLf & vbCrLf & _
             "DWF:" & vbCrLf & rutaDWF & vbCrLf & vbCrLf & _
@@ -1453,236 +1386,6 @@ Function EjecutarIPropertiesModoCodigoPlegado( _
     Return codigo
 
 End Function
-
-
-'---------------------------------------------------------
-' COPIA Y APERTURA DE LA PIEZA
-'---------------------------------------------------------
-
-' v8.5: SOLO acepta carpetas con formato estricto de rango:
-'   .A02000-A02999 / A02000-A02999   (codigos con prefijo A)
-'   .40000-40999   / 40000-40999     (codigos numericos)
-' Antes cualquier carpeta con dos numeros y una letra A en el nombre
-' (ej: "bh 1618 sueltas-40405") podia colarse como carpeta de rango.
-' Si no existe la carpeta del rango, SE CREA (bloques de 1000,
-' con punto inicial como las existentes: .A03000-A03999).
-Function BuscarCarpetaPiezaPorCodigo( _
-    ByVal raiz As String, _
-    ByVal codigo As String) As String
-
-    Try
-        If Not System.IO.Directory.Exists(raiz) Then Return ""
-
-        Dim esA As Boolean = codigo.ToUpperInvariant().StartsWith("A")
-        Dim numero As Integer = ObtenerParteNumericaCodigoIntegrada(codigo)
-
-        Dim mejor As String = ""
-        Dim mejorAmplitud As Integer = Integer.MaxValue
-
-        Dim patron As String
-        If esA Then
-            patron = "^\.?A0*(\d+)\s*-\s*A0*(\d+)$"
-        Else
-            patron = "^\.?0*(\d+)\s*-\s*0*(\d+)$"
-        End If
-
-        For Each carpeta As String In System.IO.Directory.GetDirectories(raiz)
-
-            Dim nombre As String = _
-                System.IO.Path.GetFileName(carpeta).Trim().ToUpperInvariant()
-
-            Dim m As System.Text.RegularExpressions.Match = _
-                System.Text.RegularExpressions.Regex.Match(nombre, patron)
-
-            If Not m.Success Then Continue For
-
-            Dim inicio As Integer = 0
-            Dim fin As Integer = 0
-            If Not Integer.TryParse(m.Groups(1).Value, inicio) Then Continue For
-            If Not Integer.TryParse(m.Groups(2).Value, fin) Then Continue For
-
-            If numero >= inicio AndAlso numero <= fin Then
-                Dim amplitud As Integer = Math.Abs(fin - inicio)
-
-                If amplitud < mejorAmplitud Then
-                    mejorAmplitud = amplitud
-                    mejor = carpeta
-                End If
-            End If
-
-        Next
-
-        If mejor <> "" Then Return mejor
-
-        ' No existe carpeta de rango para este codigo: se crea.
-        ' A03000 -> .A03000-A03999 ; 43500 -> .43000-43999
-        Dim inicioRango As Integer = (numero \ 1000) * 1000
-        Dim finRango As Integer = inicioRango + 999
-
-        Dim nombreNuevo As String
-        If esA Then
-            nombreNuevo = ".A" & inicioRango.ToString("00000") & _
-                          "-A" & finRango.ToString("00000")
-        Else
-            nombreNuevo = "." & inicioRango.ToString("00000") & _
-                          "-" & finRango.ToString("00000")
-        End If
-
-        Dim rutaNueva As String = System.IO.Path.Combine(raiz, nombreNuevo)
-
-        If Not System.IO.Directory.Exists(rutaNueva) Then
-            System.IO.Directory.CreateDirectory(rutaNueva)
-        End If
-
-        Return rutaNueva
-
-    Catch
-        Return ""
-    End Try
-
-End Function
-
-
-Function ObtenerParteNumericaCodigoIntegrada(ByVal codigo As String) As Integer
-
-    Try
-        Dim limpio As String = codigo.Trim().ToUpperInvariant()
-
-        If limpio.StartsWith("A") Then limpio = limpio.Substring(1)
-
-        Dim numero As Integer = 0
-        Integer.TryParse(limpio, numero)
-
-        Return numero
-
-    Catch
-        Return 0
-    End Try
-
-End Function
-
-
-Function ExtraerLimitesCarpetaIntegrada(ByVal nombre As String) As Integer()
-
-    Try
-        Dim coincidencias As System.Text.RegularExpressions.MatchCollection = _
-            System.Text.RegularExpressions.Regex.Matches(nombre, "\d+")
-
-        If coincidencias.Count < 2 Then Return Nothing
-
-        Dim primero As Integer = 0
-        Dim segundo As Integer = 0
-
-        If Not Integer.TryParse(coincidencias(0).Value, primero) Then Return Nothing
-        If Not Integer.TryParse(coincidencias(1).Value, segundo) Then Return Nothing
-
-        Return New Integer() {primero, segundo}
-
-    Catch
-        Return Nothing
-    End Try
-
-End Function
-
-
-Function CopiarPiezaConConfirmacionIntegrada( _
-    ByVal invApp As Inventor.Application, _
-    ByVal origen As String, _
-    ByVal destino As String) As Boolean
-
-    Try
-        If String.Equals( _
-            origen, _
-            destino, _
-            StringComparison.OrdinalIgnoreCase) Then
-
-            Return True
-        End If
-
-        If System.IO.File.Exists(destino) Then
-
-            Dim respuesta As System.Windows.Forms.DialogResult = _
-                System.Windows.Forms.MessageBox.Show( _
-                    "Ya existe la pieza de destino:" & vbCrLf & vbCrLf & _
-                    destino & vbCrLf & vbCrLf & _
-                    "¿Quieres reemplazarla?", _
-                    "Confirmar reemplazo de pieza", _
-                    System.Windows.Forms.MessageBoxButtons.YesNoCancel, _
-                    System.Windows.Forms.MessageBoxIcon.Warning)
-
-            If respuesta <> System.Windows.Forms.DialogResult.Yes Then
-                Return False
-            End If
-
-            CerrarDocumentoPorRutaIntegrada(invApp, destino)
-            System.IO.File.Delete(destino)
-        End If
-
-        System.IO.File.Copy(origen, destino, True)
-
-        Return True
-
-    Catch ex As Exception
-        MessageBox.Show( _
-            "No se ha podido copiar la pieza." & vbCrLf & vbCrLf & _
-            ex.Message, _
-            "Copia y plano de plegado")
-
-        Return False
-    End Try
-
-End Function
-
-
-Function ObtenerOAbrirPiezaIntegrada( _
-    ByVal invApp As Inventor.Application, _
-    ByVal ruta As String) As PartDocument
-
-    Try
-        For Each doc As Document In invApp.Documents
-            Try
-                If doc.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso _
-                   String.Equals(doc.FullFileName, ruta, StringComparison.OrdinalIgnoreCase) Then
-
-                    Return TryCast(doc, PartDocument)
-                End If
-            Catch
-            End Try
-        Next
-
-        Return TryCast(invApp.Documents.Open(ruta, True), PartDocument)
-
-    Catch
-        Return Nothing
-    End Try
-
-End Function
-
-
-Sub CerrarDocumentoPorRutaIntegrada( _
-    ByVal invApp As Inventor.Application, _
-    ByVal ruta As String)
-
-    Try
-        For i As Integer = invApp.Documents.Count To 1 Step -1
-            Dim doc As Document = invApp.Documents.Item(i)
-
-            Try
-                If String.Equals( _
-                    doc.FullFileName, _
-                    ruta, _
-                    StringComparison.OrdinalIgnoreCase) Then
-
-                    doc.Close(True)
-                    Exit Sub
-                End If
-            Catch
-            End Try
-        Next
-    Catch
-    End Try
-
-End Sub
 
 
 '---------------------------------------------------------
